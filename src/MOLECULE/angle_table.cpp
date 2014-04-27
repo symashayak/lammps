@@ -322,7 +322,7 @@ double AngleTable::single(int type, int i1, int i2, int i3)
   if (c < -1.0) c = -1.0;
 
   double theta = acos(c);
-  double u;
+  double u=0.0;
   u_lookup(type,theta,u);
   return u;
 }
@@ -366,7 +366,7 @@ void AngleTable::read_table(Table *tb, char *file, char *keyword)
 
   // open file
 
-  FILE *fp = fopen(file,"r");
+  FILE *fp = force->open_potential(file);
   if (fp == NULL) {
     char str[128];
     sprintf(str,"Cannot open file %s",file);

@@ -48,8 +48,8 @@ using namespace MathSpecial;
 
 #define MAXORDER 7
 #define OFFSET 16384
-#define SMALL 0.00001
 #define LARGE 10000.0
+#define SMALL 0.00001
 #define EPS_HOC 1.0e-7
 
 enum{REVERSE_RHO};
@@ -203,8 +203,6 @@ void PPPM::init()
   // extract short-range Coulombic cutoff from pair style
 
   triclinic = domain->triclinic;
-  scale = 1.0;
-
   pair_check();
 
   int itmp = 0;
@@ -250,26 +248,10 @@ void PPPM::init()
 
   // compute qsum & qsqsum and warn if not charge-neutral
 
-  qsum = qsqsum = 0.0;
-  for (int i = 0; i < atom->nlocal; i++) {
-    qsum += atom->q[i];
-    qsqsum += atom->q[i]*atom->q[i];
-  }
-
-  double tmp;
-  MPI_Allreduce(&qsum,&tmp,1,MPI_DOUBLE,MPI_SUM,world);
-  qsum = tmp;
-  MPI_Allreduce(&qsqsum,&tmp,1,MPI_DOUBLE,MPI_SUM,world);
-  qsqsum = tmp;
-  q2 = qsqsum * force->qqrd2e;
-
-  if (qsqsum == 0.0)
-    error->all(FLERR,"Cannot use kspace solver on system with no charge");
-  if (fabs(qsum) > SMALL && me == 0) {
-    char str[128];
-    sprintf(str,"System is not charge neutral, net charge = %g",qsum);
-    error->warning(FLERR,str);
-  }
+  scale = 1.0;
+  qqrd2e = force->qqrd2e;
+  qsum_qsq(0);
+  natoms_original = atom->natoms;
 
   // set accuracy (force units) from accuracy_relative or accuracy_absolute
 
@@ -678,13 +660,19 @@ void PPPM::compute(int eflag, int vflag)
   if (evflag_atom) fieldforce_peratom();
 
   // sum global energy across procs and add in volume-dependent term
+  // reset qsum and qsqsum if atom count has changed
 
-  const double qscale = force->qqrd2e * scale;
+  const double qscale = qqrd2e * scale;
 
   if (eflag_global) {
     double energy_all;
     MPI_Allreduce(&energy,&energy_all,1,MPI_DOUBLE,MPI_SUM,world);
     energy = energy_all;
+
+    if (atom->natoms != natoms_original) {
+      qsum_qsq(0);
+      natoms_original = atom->natoms;
+    }
 
     energy *= 0.5*volume;
     energy -= g_ewald*qsqsum/MY_PIS +
@@ -800,17 +788,17 @@ void PPPM::allocate()
   fft1 = new FFT3d(lmp,world,nx_pppm,ny_pppm,nz_pppm,
                    nxlo_fft,nxhi_fft,nylo_fft,nyhi_fft,nzlo_fft,nzhi_fft,
                    nxlo_fft,nxhi_fft,nylo_fft,nyhi_fft,nzlo_fft,nzhi_fft,
-                   0,0,&tmp);
+                   0,0,&tmp,collective_flag);
 
   fft2 = new FFT3d(lmp,world,nx_pppm,ny_pppm,nz_pppm,
                    nxlo_fft,nxhi_fft,nylo_fft,nyhi_fft,nzlo_fft,nzhi_fft,
                    nxlo_in,nxhi_in,nylo_in,nyhi_in,nzlo_in,nzhi_in,
-                   0,0,&tmp);
+                   0,0,&tmp,collective_flag);
 
   remap = new Remap(lmp,world,
                     nxlo_in,nxhi_in,nylo_in,nyhi_in,nzlo_in,nzhi_in,
                     nxlo_fft,nxhi_fft,nylo_fft,nyhi_fft,nzlo_fft,nzhi_fft,
-                    1,0,0,FFT_PRECISION);
+                    1,0,0,FFT_PRECISION,collective_flag);
 
   // create ghost grid object for rho and electric field communication
 
@@ -1268,8 +1256,8 @@ void PPPM::adjust_gewald()
 }
 
 /* ----------------------------------------------------------------------
- Calculate f(x) using Newton-Raphson solver
- ------------------------------------------------------------------------- */
+   calculate f(x) using Newton-Raphson solver
+------------------------------------------------------------------------- */
 
 double PPPM::newton_raphson_f()
 {
@@ -1287,9 +1275,9 @@ double PPPM::newton_raphson_f()
 }
 
 /* ----------------------------------------------------------------------
- Calculate numerical derivative f'(x) using forward difference
- [f(x + h) - f(x)] / h
- ------------------------------------------------------------------------- */
+   calculate numerical derivative f'(x) using forward difference
+   [f(x + h) - f(x)] / h
+------------------------------------------------------------------------- */
 
 double PPPM::derivf()
 {
@@ -1307,7 +1295,7 @@ double PPPM::derivf()
 }
 
 /* ----------------------------------------------------------------------
-   Calculate the final estimate of the accuracy
+   calculate the final estimate of the accuracy
 ------------------------------------------------------------------------- */
 
 double PPPM::final_accuracy()
@@ -1315,7 +1303,6 @@ double PPPM::final_accuracy()
   double xprd = domain->xprd;
   double yprd = domain->yprd;
   double zprd = domain->zprd;
-  double zprd_slab = zprd*slab_volfactor;
   bigint natoms = atom->natoms;
 
   double df_kspace = compute_df_kspace();
@@ -1323,7 +1310,7 @@ double PPPM::final_accuracy()
   double df_rspace = 2.0 * q2_over_sqrt * exp(-g_ewald*g_ewald*cutoff*cutoff);
   double df_table = estimate_table_accuracy(q2_over_sqrt,df_rspace);
   double estimated_accuracy = sqrt(df_kspace*df_kspace + df_rspace*df_rspace +
-   df_table*df_table);
+                                   df_table*df_table);
 
   return estimated_accuracy;
 }
@@ -2461,7 +2448,7 @@ void PPPM::fieldforce_ik()
 
     // convert E-field to force
 
-    const double qfactor = force->qqrd2e * scale * q[i];
+    const double qfactor = qqrd2e * scale * q[i];
     f[i][0] += qfactor*ekx;
     f[i][1] += qfactor*eky;
     if (slabflag != 2) f[i][2] += qfactor*ekz;
@@ -2532,7 +2519,7 @@ void PPPM::fieldforce_ad()
 
     // convert E-field to force and substract self forces
 
-    const double qfactor = force->qqrd2e * scale;
+    const double qfactor = qqrd2e * scale;
 
     s1 = x[i][0]*hx_inv;
     s2 = x[i][1]*hy_inv;
@@ -2955,7 +2942,7 @@ void PPPM::slabcorr()
 
   const double e_slabcorr = MY_2PI*(dipole_all*dipole_all -
     qsum*dipole_r2 - qsum*qsum*zprd*zprd/12.0)/volume;
-  const double qscale = force->qqrd2e * scale;
+  const double qscale = qqrd2e * scale;
 
   if (eflag_global) energy += qscale * e_slabcorr;
 
@@ -3142,7 +3129,7 @@ void PPPM::compute_group_group(int groupbit_A, int groupbit_B, int AA_flag)
 
   poisson_groups(AA_flag);
 
-  const double qscale = force->qqrd2e * scale;
+  const double qscale = qqrd2e * scale;
 
   // total group A <--> group B energy
   // self and boundary correction terms are in compute_group_group.cpp
@@ -3385,7 +3372,7 @@ void PPPM::poisson_groups(int AA_flag)
 
 void PPPM::poisson_groups_triclinic()
 {
-  int i,j,k,n;
+  int i,n;
 
   // reuse memory (already declared)
 
@@ -3488,7 +3475,7 @@ void PPPM::slabcorr_groups(int groupbit_A, int groupbit_B, int AA_flag)
 
   // compute corrections
 
-  const double qscale = force->qqrd2e * scale;
+  const double qscale = qqrd2e * scale;
   const double efact = qscale * MY_2PI/volume;
 
   e2group += efact * (dipole_A*dipole_B - 0.5*(qsum_A*dipole_r2_B +

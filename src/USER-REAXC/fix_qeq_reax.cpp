@@ -68,6 +68,8 @@ FixQEqReax::FixQEqReax(LAMMPS *lmp, int narg, char **arg) :
   if (narg != 8) error->all(FLERR,"Illegal fix qeq/reax command");
 
   nevery = force->inumeric(FLERR,arg[3]);
+  if (nevery <= 0) error->all(FLERR,"Illegal fix qeq/reax command");
+
   swa = force->numeric(FLERR,arg[4]);
   swb = force->numeric(FLERR,arg[5]);
   tolerance = force->numeric(FLERR,arg[6]);
@@ -122,7 +124,6 @@ FixQEqReax::FixQEqReax(LAMMPS *lmp, int narg, char **arg) :
 
   reaxc = NULL;
   reaxc = (PairReaxC *) force->pair_match("reax/c",1);
-
 }
 
 /* ---------------------------------------------------------------------- */
@@ -322,13 +323,14 @@ void FixQEqReax::init()
     error->all(FLERR,"Must use pair_style reax/c with fix qeq/reax");
 
   // need a half neighbor list w/ Newton off and ghost neighbors
-  // built whenever re-neighboring occurs
+  // make it occasional if QeQ not performed every timestep
 
   int irequest = neighbor->request(this);
   neighbor->requests[irequest]->pair = 0;
   neighbor->requests[irequest]->fix = 1;
   neighbor->requests[irequest]->newton = 2;
   neighbor->requests[irequest]->ghost = 1;
+  if (nevery > 1) neighbor->requests[irequest]->occasional = 1;
 
   init_shielding();
   init_taper();
@@ -515,7 +517,7 @@ void FixQEqReax::init_matvec()
 void FixQEqReax::compute_H()
 {
   int inum, jnum, *ilist, *jlist, *numneigh, **firstneigh;
-  int i, j, ii, jj, temp, newnbr, flag;
+  int i, j, ii, jj, flag;
   double **x, SMALL = 0.0001;
   double dx, dy, dz, r_sqr;
 
@@ -523,12 +525,14 @@ void FixQEqReax::compute_H()
   tagint *tag = atom->tag;
   x = atom->x;
 
+  if (nevery > 1) neighbor->build_one(list->index);
   inum = list->inum;
   ilist = list->ilist;
   numneigh = list->numneigh;
   firstneigh = list->firstneigh;
 
   // fill in the H matrix
+
   m_fill = 0;
   r_sqr = 0;
   for( ii = 0; ii < inum; ii++ ) {
@@ -604,7 +608,7 @@ int FixQEqReax::CG( double *b, double *x )
 {
   int  i, j, imax;
   double tmp, alpha, beta, b_norm;
-  double sig_old, sig_new, sig0;
+  double sig_old, sig_new;
 
   imax = 200;
 
@@ -618,7 +622,6 @@ int FixQEqReax::CG( double *b, double *x )
 
   b_norm = parallel_norm( b, n );
   sig_new = parallel_dot( r, d, n );
-  sig0 = sig_new;
 
   for( i = 1; i < imax && sqrt(sig_new) / b_norm > tolerance; ++i ) {
     comm->forward_comm_fix(this); //Dist_vector( d );

@@ -21,6 +21,7 @@
 #include "pair_eam_alloy.h"
 #include "atom.h"
 #include "comm.h"
+#include "force.h"
 #include "memory.h"
 #include "error.h"
 
@@ -122,7 +123,7 @@ void PairEAMAlloy::read_file(char *filename)
   char line[MAXLINE];
 
   if (me == 0) {
-    fptr = open_potential(filename);
+    fptr = force->open_potential(filename);
     if (fptr == NULL) {
       char str[128];
       sprintf(str,"Cannot open EAM potential file %s",filename);
@@ -152,7 +153,7 @@ void PairEAMAlloy::read_file(char *filename)
   char **words = new char*[file->nelements+1];
   nwords = 0;
   strtok(line," \t\n\r\f");
-  while (words[nwords++] = strtok(NULL," \t\n\r\f")) continue;
+  while ((words[nwords++] = strtok(NULL," \t\n\r\f"))) continue;
 
   file->elements = new char*[file->nelements];
   for (int i = 0; i < file->nelements; i++) {

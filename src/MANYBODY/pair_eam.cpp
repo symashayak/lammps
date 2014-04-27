@@ -149,6 +149,7 @@ void PairEAM::compute(int eflag, int vflag)
   double **f = atom->f;
   int *type = atom->type;
   int nlocal = atom->nlocal;
+  int nall = nlocal + atom->nghost;
   int newton_pair = force->newton_pair;
 
   inum = list->inum;
@@ -159,8 +160,7 @@ void PairEAM::compute(int eflag, int vflag)
   // zero out density
 
   if (newton_pair) {
-    m = nlocal + atom->nghost;
-    for (i = 0; i < m; i++) rho[i] = 0.0;
+    for (i = 0; i < nall; i++) rho[i] = 0.0;
   } else for (i = 0; i < nlocal; i++) rho[i] = 0.0;
 
   // rho = density at each atom
@@ -439,7 +439,7 @@ void PairEAM::read_file(char *filename)
   char line[MAXLINE];
 
   if (me == 0) {
-    fptr = open_potential(filename);
+    fptr = force->open_potential(filename);
     if (fptr == NULL) {
       char str[128];
       sprintf(str,"Cannot open EAM potential file %s",filename);
@@ -766,7 +766,7 @@ void PairEAM::grab(FILE *fptr, int n, double *list)
     fgets(line,MAXLINE,fptr);
     ptr = strtok(line," \t\n\r\f");
     list[i++] = atof(ptr);
-    while (ptr = strtok(NULL," \t\n\r\f")) list[i++] = atof(ptr);
+    while ((ptr = strtok(NULL," \t\n\r\f"))) list[i++] = atof(ptr);
   }
 }
 

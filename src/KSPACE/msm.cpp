@@ -100,6 +100,7 @@ MSM::MSM(LAMMPS *lmp, int narg, char **arg) : KSpace(lmp, narg, arg)
   levels = 0;
 
   peratom_allocate_flag = 0;
+  scalar_pressure_flag = 1;
 
   order = 10;
 }
@@ -165,9 +166,10 @@ void MSM::init()
     error->all(FLERR,"Cannot (yet) use single precision with MSM "
                "(remove -DFFT_SINGLE from Makefile and recompile)");
 
-  pair_check();
-
   // extract short-range Coulombic cutoff from pair style
+
+  triclinic = domain->triclinic;
+  pair_check();
 
   int itmp;
   double *p_cutoff = (double *) force->pair->extract("cut_coul",itmp);
@@ -175,36 +177,12 @@ void MSM::init()
     error->all(FLERR,"KSpace style is incompatible with Pair style");
   cutoff = *p_cutoff;
 
-  // compute qsum & qsqsum and give error if not charge-neutral
+  // compute qsum & qsqsum and error if not charge-neutral
 
-  qsum = qsqsum = 0.0;
-  for (int i = 0; i < atom->nlocal; i++) {
-    qsum += atom->q[i];
-    qsqsum += atom->q[i]*atom->q[i];
-  }
-
-  qqrd2e = force->qqrd2e;
   scale = 1.0;
-
-  double tmp;
-  MPI_Allreduce(&qsum,&tmp,1,MPI_DOUBLE,MPI_SUM,world);
-  qsum = tmp;
-  MPI_Allreduce(&qsqsum,&tmp,1,MPI_DOUBLE,MPI_SUM,world);
-  qsqsum = tmp;
-  q2 = qsqsum * force->qqrd2e;
-
-  if (qsqsum == 0.0)
-    error->all(FLERR,"Cannot use kspace solver on system with no charge");
-
-  // not yet sure of the correction needed for non-neutral systems
-
-  if (fabs(qsum) > SMALL) {
-    char str[128];
-    sprintf(str,"System is not charge neutral, net charge = %g",qsum);
-    error->all(FLERR,str);
-  }
-
-  triclinic = domain->triclinic;
+  qqrd2e = force->qqrd2e;
+  qsum_qsq(1);
+  natoms_original = atom->natoms;
 
   // set accuracy (force units) from accuracy_relative or accuracy_absolute
 
@@ -416,7 +394,7 @@ void MSM::setup()
   } else {
     get_g_direct();
     if (domain->nonperiodic) get_g_direct_top(levels-1);
-    if (vflag_either) {
+    if (vflag_either && !scalar_pressure_flag) {
       get_virial_direct();
       if (domain->nonperiodic) get_virial_direct_top(levels-1);
     }
@@ -462,6 +440,19 @@ void MSM::compute(int eflag, int vflag)
   if (eflag || vflag) ev_setup(eflag,vflag);
   else evflag = evflag_atom = eflag_global = vflag_global =
     eflag_atom = vflag_atom = eflag_either = vflag_either = 0;
+
+  if (scalar_pressure_flag && vflag_either) {
+    if (vflag_atom)
+      error->all(FLERR,"Must use 'kspace_modify pressure/scalar no' to obtain "
+        "per-atom virial with kspace_style MSM");
+
+    // must switch on global energy computation if not already on
+
+    if (eflag == 0 || eflag == 2) {
+      eflag++;
+      ev_setup(eflag,vflag);
+    }
+  }
 
   // invoke allocate_peratom() if needed for first time
 
@@ -572,27 +563,38 @@ void MSM::compute(int eflag, int vflag)
 
   if (evflag_atom) fieldforce_peratom();
 
-  // total long-range energy
+  // sum global energy across procs and add in self-energy term
+  // reset qsum and qsqsum if atom count has changed
 
-  const double qscale = force->qqrd2e * scale;
+  const double qscale = qqrd2e * scale;
 
   if (eflag_global) {
     double energy_all;
     MPI_Allreduce(&energy,&energy_all,1,MPI_DOUBLE,MPI_SUM,world);
     energy = energy_all;
 
-    double e_self = qsqsum*gamma(0.0)/cutoff;  // Self-energy term
+    if (atom->natoms != natoms_original) {
+      qsum_qsq(0);
+      natoms_original = atom->natoms;
+    }
+
+    double e_self = qsqsum*gamma(0.0)/cutoff;
     energy -= e_self;
     energy *= 0.5*qscale;
   }
 
   // total long-range virial
 
-  if (vflag_global) {
+  if (vflag_global && !scalar_pressure_flag) {
     double virial_all[6];
     MPI_Allreduce(virial,virial_all,6,MPI_DOUBLE,MPI_SUM,world);
     for (i = 0; i < 6; i++) virial[i] = 0.5*qscale*virial_all[i];
   }
+
+  // fast compute of scalar pressure (if requested)
+
+  if (scalar_pressure_flag && vflag_global)
+    for (i = 0; i < 3; i++) virial[i] = energy/3.0;
 
   // per-atom energy/virial
   // energy includes self-energy correction
@@ -1588,7 +1590,7 @@ void MSM::direct(int n)
         qtmp = qgridn[icz][icy][icx]; // charge on center grid point
 
         esum = 0.0;
-        if (vflag_either)
+        if (vflag_either && !scalar_pressure_flag)
           v0sum = v1sum = v2sum = v3sum = v4sum = v5sum = 0.0;
 
         // use hemisphere to avoid double computation of pair-wise
@@ -1612,7 +1614,7 @@ void MSM::direct(int n)
               esum += gtmp * qtmp2;
               ekj[ii] += gtmp * qtmp;
 
-              if (vflag_either) {
+              if (vflag_either && !scalar_pressure_flag) {
                 v0sum += v0_directn[k] * qtmp2;
                 v1sum += v1_directn[k] * qtmp2;
                 v2sum += v2_directn[k] * qtmp2;
@@ -1644,7 +1646,7 @@ void MSM::direct(int n)
             esum += gtmp * qtmp2;
             ekj[ii] += gtmp * qtmp;
 
-            if (vflag_either) {
+            if (vflag_either && !scalar_pressure_flag) {
               v0sum += v0_directn[k] * qtmp2;
               v1sum += v1_directn[k] * qtmp2;
               v2sum += v2_directn[k] * qtmp2;
@@ -1675,7 +1677,7 @@ void MSM::direct(int n)
           esum += gtmp * qtmp2;
           ekj[ii] += gtmp * qtmp;
 
-          if (vflag_either) {
+          if (vflag_either && !scalar_pressure_flag) {
             v0sum += v0_directn[k] * qtmp2;
             v1sum += v1_directn[k] * qtmp2;
             v2sum += v2_directn[k] * qtmp2;
@@ -1717,7 +1719,7 @@ void MSM::direct(int n)
         if (evflag) {
           qtmp = qgridn[icz][icy][icx];
           if (eflag_global) energy += 2.0 * esum * qtmp;
-          if (vflag_global) {
+          if (vflag_global && !scalar_pressure_flag) {
             virial[0] += 2.0 * v0sum * qtmp;
             virial[1] += 2.0 * v1sum * qtmp;
             virial[2] += 2.0 * v2sum * qtmp;
@@ -1947,7 +1949,7 @@ void MSM::direct_top(int n)
         qtmp = qgridn[icz][icy][icx];
 
         esum = 0.0;
-        if (vflag_either)
+        if (vflag_either && !scalar_pressure_flag)
           v0sum = v1sum = v2sum = v3sum = v4sum = v5sum = 0.0;
 
         // use hemisphere to avoid double computation of pair-wise
@@ -1971,7 +1973,7 @@ void MSM::direct_top(int n)
               esum += gtmp * qtmp2;
               ekj[ii] += gtmp * qtmp;
 
-              if (vflag_either) {
+              if (vflag_either && !scalar_pressure_flag) {
                 v0sum += v0_direct_top[k] * qtmp2;
                 v1sum += v1_direct_top[k] * qtmp2;
                 v2sum += v2_direct_top[k] * qtmp2;
@@ -2003,7 +2005,7 @@ void MSM::direct_top(int n)
             esum += gtmp * qtmp2;
             ekj[ii] += gtmp * qtmp;
 
-            if (vflag_either) {
+            if (vflag_either && !scalar_pressure_flag) {
               v0sum += v0_direct_top[k] * qtmp2;
               v1sum += v1_direct_top[k] * qtmp2;
               v2sum += v2_direct_top[k] * qtmp2;
@@ -2034,7 +2036,7 @@ void MSM::direct_top(int n)
           esum += gtmp * qtmp2;
           ekj[ii] += gtmp * qtmp;
 
-          if (vflag_either) {
+          if (vflag_either && !scalar_pressure_flag) {
             v0sum += v0_direct_top[k] * qtmp2;
             v1sum += v1_direct_top[k] * qtmp2;
             v2sum += v2_direct_top[k] * qtmp2;
@@ -2057,7 +2059,7 @@ void MSM::direct_top(int n)
         esum += 0.5 * gtmp * qtmp;
         egridn[icz][icy][icx] += 0.5 * gtmp * qtmp;
 
-        if (vflag_either) {
+        if (vflag_either && !scalar_pressure_flag) {
           v0sum += v0_direct_top[k] * qtmp;
           v1sum += v1_direct_top[k] * qtmp;
           v2sum += v2_direct_top[k] * qtmp;
@@ -2084,7 +2086,7 @@ void MSM::direct_top(int n)
         if (evflag) {
           qtmp = qgridn[icz][icy][icx];
           if (eflag_global) energy += 2.0 * esum * qtmp;
-          if (vflag_global) {
+          if (vflag_global && !scalar_pressure_flag) {
             virial[0] += 2.0 * v0sum * qtmp;
             virial[1] += 2.0 * v1sum * qtmp;
             virial[2] += 2.0 * v2sum * qtmp;
@@ -2777,7 +2779,7 @@ void MSM::fieldforce()
 
     // convert E-field to force
 
-    const double qfactor = force->qqrd2e*scale*q[i];
+    const double qfactor = qqrd2e*scale*q[i];
     f[i][0] += qfactor*ekx;
     f[i][1] += qfactor*eky;
     f[i][2] += qfactor*ekz;

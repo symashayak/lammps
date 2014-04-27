@@ -193,6 +193,7 @@ void PairADP::compute(int eflag, int vflag)
 
     for (jj = 0; jj < jnum; jj++) {
       j = jlist[jj];
+      j &= NEIGHMASK;
 
       delx = xtmp - x[j][0];
       dely = ytmp - x[j][1];
@@ -293,6 +294,7 @@ void PairADP::compute(int eflag, int vflag)
 
     for (jj = 0; jj < jnum; jj++) {
       j = jlist[jj];
+      j &= NEIGHMASK;
 
       delx = xtmp - x[j][0];
       dely = ytmp - x[j][1];
@@ -545,7 +547,7 @@ void PairADP::read_file(char *filename)
   char line[MAXLINE];
 
   if (me == 0) {
-    fp = open_potential(filename);
+    fp = force->open_potential(filename);
     if (fp == NULL) {
       char str[128];
       sprintf(str,"Cannot open ADP potential file %s",filename);
@@ -575,7 +577,7 @@ void PairADP::read_file(char *filename)
   char **words = new char*[file->nelements+1];
   nwords = 0;
   strtok(line," \t\n\r\f");
-  while (words[nwords++] = strtok(NULL," \t\n\r\f")) continue;
+  while ((words[nwords++] = strtok(NULL," \t\n\r\f"))) continue;
 
   file->elements = new char*[file->nelements];
   for (int i = 0; i < file->nelements; i++) {
@@ -925,7 +927,7 @@ void PairADP::grab(FILE *fp, int n, double *list)
     fgets(line,MAXLINE,fp);
     ptr = strtok(line," \t\n\r\f");
     list[i++] = atof(ptr);
-    while (ptr = strtok(NULL," \t\n\r\f")) list[i++] = atof(ptr);
+    while ((ptr = strtok(NULL," \t\n\r\f"))) list[i++] = atof(ptr);
   }
 }
 

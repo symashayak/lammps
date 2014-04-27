@@ -66,7 +66,7 @@ enum{FULL_BODY,INITIAL,FINAL,FORCE_TORQUE,VCM_ANGMOM,XCM_MASS,ITENSOR,DOF};
 FixRigidSmall::FixRigidSmall(LAMMPS *lmp, int narg, char **arg) :
   Fix(lmp, narg, arg)
 {
-  int i,ibody;
+  int i;
 
   scalar_flag = 1;
   extscalar = 0;
@@ -327,7 +327,7 @@ int FixRigidSmall::setmask()
 
 void FixRigidSmall::init()
 {
-  int i,ibody;
+  int i;
 
   triclinic = domain->triclinic;
 
@@ -384,7 +384,6 @@ void FixRigidSmall::setup_pre_neighbor()
 void FixRigidSmall::setup(int vflag)
 {
   int i,n,ibody;
-  double massone,radone;
 
   //check(1);
 
@@ -394,7 +393,6 @@ void FixRigidSmall::setup(int vflag)
 
   double **x = atom->x;
   double **f = atom->f;
-  int *type = atom->type;
   imageint *image = atom->image;
   int nlocal = atom->nlocal;
 
@@ -597,7 +595,7 @@ void FixRigidSmall::post_force(int vflag)
 void FixRigidSmall::final_integrate()
 {
   int i,ibody;
-  double dtfm,xy,xz,yz;
+  double dtfm;
 
   //check(3);
 
@@ -787,7 +785,6 @@ void FixRigidSmall::pre_neighbor()
   imageint *image = atom->image;
   int nlocal = atom->nlocal;
 
-  int ibody;
   imageint idim,otherdims;
 
   for (int i = 0; i < nlocal; i++) {
@@ -944,7 +941,6 @@ void FixRigidSmall::deform(int flag)
 
 void FixRigidSmall::set_xv()
 {
-  int ibody,itype;
   int xbox,ybox,zbox;
   double x0,x1,x2,v0,v1,v2,fc0,fc1,fc2,massone;
   double ione[3],exone[3],eyone[3],ezone[3],vr[6],p[3][3];
@@ -1112,9 +1108,7 @@ void FixRigidSmall::set_xv()
 
 void FixRigidSmall::set_v()
 {
-  int ibody,itype;
   int xbox,ybox,zbox;
-  double dx,dy,dz;
   double x0,x1,x2,v0,v1,v2,fc0,fc1,fc2,massone;
   double ione[3],exone[3],eyone[3],ezone[3],delta[3],vr[6];
 
@@ -1539,7 +1533,7 @@ void FixRigidSmall::ring_farthest(int n, char *cbuf)
 
 void FixRigidSmall::setup_bodies_static()
 {
-  int i,itype,ibody;
+  int i,ibody;
 
   // extended = 1 if any particle in a rigid body is finite size
   //              or has a dipole moment
@@ -1703,7 +1697,7 @@ void FixRigidSmall::setup_bodies_static()
   for (ibody = 0; ibody < nlocal_body+nghost_body; ibody++)
     for (i = 0; i < 6; i++) itensor[ibody][i] = 0.0;
 
-  double dx,dy,dz,rad;
+  double dx,dy,dz;
   double *inertia;
 
   for (i = 0; i < nlocal; i++) {
@@ -1988,8 +1982,6 @@ void FixRigidSmall::setup_bodies_static()
   // error check that re-computed momemts of inertia match diagonalized ones
   // do not do test for bodies with params read from infile
 
-  double *inew;
-
   double norm;
   for (ibody = 0; ibody < nlocal_body; ibody++) {
     if (infile && inbody[ibody]) continue;
@@ -2039,7 +2031,7 @@ void FixRigidSmall::setup_bodies_static()
 
 void FixRigidSmall::setup_bodies_dynamic()
 {
-  int i,n,ibody;
+  int i,ibody;
   double massone,radone;
 
   // sum vcm, angmom across all rigid bodies
@@ -2144,7 +2136,7 @@ void FixRigidSmall::setup_bodies_dynamic()
    which = 0 to read total mass and center-of-mass
    which = 1 to read 6 moments of inertia, store in array
    flag inbody = 0 for local bodies whose info is read from file
-   nlines = # of lines of rigid body info
+   nlines = # of lines of rigid body info, 0 is OK
    one line = rigid-ID mass xcm ycm zcm ixx iyy izz ixy ixz iyz
    and rigid-ID = mol-ID for fix rigid/small
 ------------------------------------------------------------------------- */
@@ -2161,11 +2153,10 @@ void FixRigidSmall::readfile(int which, double **array, int *inbody)
   // key = mol ID of bodies my atoms own
   // value = index into local body array
 
-  tagint *molecule = atom->molecule;
   int nlocal = atom->nlocal;
 
   hash = new std::map<tagint,int>();
-  for (int i = 0; i < nlocal; i++)
+  for (i = 0; i < nlocal; i++)
     if (bodyown[i] >= 0) (*hash)[atom->molecule[i]] = bodyown[i];
 
   // open file and read header
@@ -2190,7 +2181,6 @@ void FixRigidSmall::readfile(int which, double **array, int *inbody)
   }
 
   MPI_Bcast(&nlines,1,MPI_INT,0,world);
-  if (nlines == 0) error->all(FLERR,"Fix rigid file has no lines");
 
   char *buffer = new char[CHUNK*MAXLINE];
   char **values = new char*[ATTRIBUTE_PERBODY];
@@ -2455,7 +2445,6 @@ void FixRigidSmall::set_molecule(int nlocalprev, tagint tagprev,
   int nlocal = atom->nlocal;
   if (nlocalprev == nlocal) return;
 
-  double **x = atom->x;
   tagint *tag = atom->tag;
 
   for (int i = nlocalprev; i < nlocal; i++) {
@@ -2508,6 +2497,10 @@ void FixRigidSmall::set_molecule(int nlocalprev, tagint tagprev,
       nlocal_body++;
     }
   }
+
+  // increment total # of rigid bodies
+
+  nbody++;
 }
 
 /* ----------------------------------------------------------------------
@@ -2616,8 +2609,6 @@ int FixRigidSmall::pack_comm(int n, int *list, double *buf,
   int i,j;
   double *xcm,*vcm,*quat,*omega,*ex_space,*ey_space,*ez_space;
 
-  int nlocal = atom->nlocal;
-
   int m = 0;
 
   if (commflag == INITIAL) {
@@ -2692,7 +2683,7 @@ int FixRigidSmall::pack_comm(int n, int *list, double *buf,
 
 void FixRigidSmall::unpack_comm(int n, int first, double *buf)
 {
-  int i,j,last,flag;
+  int i,j,last;
   double *xcm,*vcm,*quat,*omega,*ex_space,*ey_space,*ez_space;
 
   int m = 0;
@@ -2844,8 +2835,6 @@ void FixRigidSmall::unpack_reverse_comm(int n, int *list, double *buf)
 {
   int i,j,k;
   double *fcm,*torque,*vcm,*angmom,*xcm;
-
-  int nlocal = atom->nlocal;
 
   int m = 0;
 

@@ -51,6 +51,10 @@
 #include "omp.h"
 #endif
 
+#ifdef _WIN32
+#include <direct.h>
+#endif
+
 using namespace LAMMPS_NS;
 
 #define DELTALINE 256
@@ -182,7 +186,10 @@ void Input::file()
     if (n == 0) {
       if (label_active) error->all(FLERR,"Label wasn't found in input script");
       if (me == 0) {
-        if (infile != stdin) fclose(infile);
+        if (infile != stdin) {
+          fclose(infile);
+          infile = NULL;
+        }
         nfile--;
       }
       MPI_Bcast(&nfile,1,MPI_INT,0,world);
@@ -231,11 +238,12 @@ void Input::file(const char *filename)
   // error if another nested file still open, should not be possible
   // open new filename and set infile, infiles[0], nfile
   // call to file() will close filename and decrement nfile
-  
+
   if (me == 0) {
     if (nfile > 1)
       error->one(FLERR,"Invalid use of library file() function");
-    
+
+    if (infile && infile != stdin) fclose(infile); 
     infile = fopen(filename,"r");
     if (infile == NULL) {
       char str[128];
@@ -815,7 +823,7 @@ void Input::jump()
   if (me == 0) {
     if (strcmp(arg[0],"SELF") == 0) rewind(infile);
     else {
-      if (infile != stdin) fclose(infile);
+      if (infile && infile != stdin) fclose(infile);
       infile = fopen(arg[0],"r");
       if (infile == NULL) {
         char str[128];
@@ -885,7 +893,7 @@ void Input::partition()
 {
   if (narg < 3) error->all(FLERR,"Illegal partition command");
 
-  int yesflag;
+  int yesflag=-1;
   if (strcmp(arg[0],"yes") == 0) yesflag = 1;
   else if (strcmp(arg[0],"no") == 0) yesflag = 0;
   else error->all(FLERR,"Illegal partition command");
@@ -985,11 +993,14 @@ void Input::shell()
 
   } else if (strcmp(arg[0],"mkdir") == 0) {
     if (narg < 2) error->all(FLERR,"Illegal shell mkdir command");
-#if !defined(WINDOWS) && !defined(__MINGW32__)
     if (me == 0)
-      for (int i = 1; i < narg; i++)
+      for (int i = 1; i < narg; i++) {
+#if defined(_WIN32)
+        _mkdir(arg[i]);
+#else
         mkdir(arg[i], S_IRWXU | S_IRGRP | S_IXGRP);
 #endif
+      }
 
   } else if (strcmp(arg[0],"mv") == 0) {
     if (narg != 3) error->all(FLERR,"Illegal shell mv command");
@@ -1336,7 +1347,7 @@ void Input::neighbor_command()
 
 void Input::newton()
 {
-  int newton_pair,newton_bond;
+  int newton_pair=1,newton_bond=1;
 
   if (narg == 1) {
     if (strcmp(arg[0],"off") == 0) newton_pair = newton_bond = 0;
@@ -1353,15 +1364,9 @@ void Input::newton()
 
   force->newton_pair = newton_pair;
 
-  if (newton_bond == 0) {
-    if (domain->box_exist && force->newton_bond == 1)
-      error->all(FLERR,"Newton bond change after simulation box is defined");
-    force->newton_bond = 0;
-  } else {
-    if (domain->box_exist && force->newton_bond == 0)
-      error->all(FLERR,"Newton bond change after simulation box is defined");
-    force->newton_bond = 1;
-  }
+  if (domain->box_exist && (newton_bond != force->newton_bond))
+    error->all(FLERR,"Newton bond change after simulation box is defined");
+  force->newton_bond = newton_bond;
 
   if (newton_pair || newton_bond) force->newton = 1;
   else force->newton = 0;

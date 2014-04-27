@@ -209,7 +209,8 @@ FixPour::FixPour(LAMMPS *lmp, int narg, char **arg) :
   // volume_one = volume of inserted particle (with max possible radius)
   // in 3d, insure dy >= 1, for quasi-2d simulations
 
-  double volume,volume_one;
+  double volume,volume_one=0.0;
+  dstyle = -1;
   if (domain->dimension == 3) {
     if (region_style == 1) {
       double dy = yhi - ylo;
@@ -446,13 +447,12 @@ void FixPour::pre_exchange()
 
   int success;
   double radtmp,delx,dely,delz,rsq,radsum,rn,h;
-  double coord[3],xcm[3];
+  double coord[3];
 
   int nfix = modify->nfix;
   Fix **fix = modify->fix;
 
-  AtomVec *avec = atom->avec;
-  double denstmp,vxtmp,vytmp,vztmp;
+  double denstmp;
   double *sublo = domain->sublo;
   double *subhi = domain->subhi;
 
@@ -593,7 +593,7 @@ void FixPour::pre_exchange()
         int n = atom->nlocal - 1;
         atom->tag[n] = maxtag_all + m+1;
         if (mode == MOLECULE) {
-          if (atom->molecular) atom->molecule[n] = maxmol_all+1;
+          if (atom->molecule_flag) atom->molecule[n] = maxmol_all+1;
           if (atom->molecular == 2) {
             atom->molindex[n] = 0;
             atom->molatom[n] = m;
@@ -705,11 +705,6 @@ int FixPour::overlap(int i)
   double delta;
   if (mode == ATOM) delta = atom->radius[i] + radius_max;
   else delta = atom->radius[i] + onemol->molradius;
-
-  double *boxlo = domain->boxlo;
-  double *boxhi = domain->boxhi;
-  double *prd = domain->prd;
-  int *periodicity = domain->periodicity;
 
   double *x = atom->x[i];
 

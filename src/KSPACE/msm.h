@@ -40,7 +40,6 @@ class MSM : public KSpace {
   double precision;
   int nfactors;
   int *factors;
-  double qsum,qsqsum,q2;
   double qqrd2e;
   double cutoff;
   double volume;
@@ -216,6 +215,11 @@ E: MSM grid is too large
 The global MSM grid is larger than OFFSET in one or more dimensions.
 OFFSET is currently set to 16384.  You likely need to decrease the
 requested accuracy.
+
+E: Must use 'kspace_modify pressure/scalar no' to obtain per-atom virial
+with kspace_style MSM
+
+The kspace scalar pressure option cannot be used to obtain per-atom virial.
 
 E: Out of range atoms - cannot compute MSM
 

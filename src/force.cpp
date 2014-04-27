@@ -486,6 +486,21 @@ Improper *Force::new_improper(const char *style, const char *suffix, int &sflag)
 }
 
 /* ----------------------------------------------------------------------
+   return ptr to current improper class or hybrid sub-class if matches style
+------------------------------------------------------------------------- */
+
+Improper *Force::improper_match(const char *style)
+{
+  if (strcmp(improper_style,style) == 0) return improper;
+  else if (strcmp(improper_style,"hybrid") == 0) {
+    ImproperHybrid *hybrid = (ImproperHybrid *) bond;
+    for (int i = 0; i < hybrid->nstyles; i++)
+      if (strcmp(hybrid->keywords[i],style) == 0) return hybrid->styles[i];
+  }
+  return NULL;
+}
+
+/* ----------------------------------------------------------------------
    new kspace style
 ------------------------------------------------------------------------- */
 
@@ -568,11 +583,11 @@ void Force::set_special(int narg, char **arg)
 {
   if (narg == 0) error->all(FLERR,"Illegal special_bonds command");
 
-  // defaults
+  // defaults, but do not reset special_extra
 
   special_lj[1] = special_lj[2] = special_lj[3] = 0.0;
   special_coul[1] = special_coul[2] = special_coul[3] = 0.0;
-  special_angle = special_dihedral = special_extra = 0;
+  special_angle = special_dihedral = 0;
 
   int iarg = 0;
   while (iarg < narg) {
@@ -778,6 +793,77 @@ bigint Force::bnumeric(const char *file, int line, char *str)
   }
 
   return ATOLL(str);
+}
+
+/* ----------------------------------------------------------------------
+   open a potential file as specified by name; failing that,
+   search in dir specified by env variable LAMMPS_POTENTIALS
+------------------------------------------------------------------------- */
+
+FILE *Force::open_potential(const char *name)
+{
+  FILE *fp;
+
+  if (name == NULL) return NULL;
+
+  // attempt to open file directly
+  // if successful, return ptr
+
+  fp = fopen(name,"r");
+  if (fp) return fp;
+
+  // try the environment variable directory
+
+  const char *path = getenv("LAMMPS_POTENTIALS");
+  if (path == NULL) return NULL;
+
+  const char *pot = potname(name);
+  if (pot == NULL) return NULL;
+
+  size_t len1 = strlen(path);
+  size_t len2 = strlen(pot);
+  char *newpath = new char[len1+len2+2];
+
+  strcpy(newpath,path);
+#if defined(_WIN32)
+  newpath[len1] = '\\';
+  newpath[len1+1] = 0;
+#else
+  newpath[len1] = '/';
+  newpath[len1+1] = 0;
+#endif
+  strcat(newpath,pot);
+
+  fp = fopen(newpath,"r");
+  delete[] newpath;
+  return fp;
+}
+
+/* ----------------------------------------------------------------------
+   strip off leading part of path, return just the filename
+------------------------------------------------------------------------- */
+
+const char *Force::potname(const char *path)
+{
+  const char *pot;
+
+  if (path == NULL) return NULL;
+
+#if defined(_WIN32)
+  // skip over the disk drive part of windows pathnames
+  if (isalpha(path[0]) && path[1] == ':') 
+    path += 2;
+#endif
+
+  for (pot = path; *path != '\0'; ++path) {
+#if defined(_WIN32)
+    if ((*path == '\\') || (*path == '/')) pot = path + 1;
+#else
+    if (*path == '/') pot = path + 1;
+#endif
+  }
+
+  return pot;
 }
 
 /* ----------------------------------------------------------------------

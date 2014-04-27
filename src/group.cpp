@@ -187,7 +187,7 @@ void Group::assign(int narg, char **arg)
          strcmp(arg[2],"<=") == 0 || strcmp(arg[2],">=") == 0 ||
          strcmp(arg[2],"<>") == 0)) {
 
-      int condition;
+      int condition = -1;
       if (strcmp(arg[2],"<") == 0) condition = LT;
       else if (strcmp(arg[2],"<=") == 0) condition = LE;
       else if (strcmp(arg[2],">") == 0) condition = GT;
@@ -502,9 +502,15 @@ void Group::assign(int narg, char **arg)
   MPI_Allreduce(&rlocal,&all,1,MPI_DOUBLE,MPI_SUM,world);
 
   if (me == 0) {
-    if (screen) fprintf(screen,"%.15g atoms in group %s\n",all,names[igroup]);
-    if (logfile)
-      fprintf(logfile,"%.15g atoms in group %s\n",all,names[igroup]);
+    if (dynamic[igroup]) {
+      if (screen) fprintf(screen,"dynamic group %s\n",names[igroup]);
+      if (logfile) fprintf(logfile,"dynamic group %s\n",names[igroup]);
+    } else {
+      if (screen) 
+        fprintf(screen,"%.15g atoms in group %s\n",all,names[igroup]);
+      if (logfile)
+        fprintf(logfile,"%.15g atoms in group %s\n",all,names[igroup]);
+    }
   }
 }
 

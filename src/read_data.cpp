@@ -240,7 +240,7 @@ void ReadData::command(int narg, char **arg)
         int i;
         for (i = 0; i < nfix; i++)
           if (strcmp(keyword,fix_section[i]) == 0) {
-            if (firstpass) fix(i,keyword);
+            if (firstpass) fix(fix_index[i],keyword);
             else skip_lines(modify->fix[fix_index[i]]->
                             read_data_skip_lines(keyword));
             parse_keyword(0);
@@ -949,12 +949,13 @@ void ReadData::bonds(int firstpass)
     for (int i = 0; i < nlocal; i++) max = MAX(max,count[i]);
     int maxall;
     MPI_Allreduce(&max,&maxall,1,MPI_INT,MPI_MAX,world);
+    maxall += atom->extra_bond_per_atom;
 
     if (me == 0) {
       if (screen) fprintf(screen,"  %d = max bonds/atom\n",maxall);
       if (logfile) fprintf(logfile,"  %d = max bonds/atom\n",maxall);
     }
-    atom->bond_per_atom = maxall + atom->extra_bond_per_atom;
+    atom->bond_per_atom = maxall;
     memory->destroy(count);
     return;
   }
@@ -1023,12 +1024,13 @@ void ReadData::angles(int firstpass)
     for (int i = 0; i < nlocal; i++) max = MAX(max,count[i]);
     int maxall;
     MPI_Allreduce(&max,&maxall,1,MPI_INT,MPI_MAX,world);
+    maxall += atom->extra_angle_per_atom;
 
     if (me == 0) {
       if (screen) fprintf(screen,"  %d = max angles/atom\n",maxall);
       if (logfile) fprintf(logfile,"  %d = max angles/atom\n",maxall);
     }
-    atom->angle_per_atom = maxall + atom->extra_angle_per_atom;
+    atom->angle_per_atom = maxall;
     memory->destroy(count);
     return;
   }
@@ -1097,12 +1099,13 @@ void ReadData::dihedrals(int firstpass)
     for (int i = 0; i < nlocal; i++) max = MAX(max,count[i]);
     int maxall;
     MPI_Allreduce(&max,&maxall,1,MPI_INT,MPI_MAX,world);
+    maxall += atom->extra_dihedral_per_atom;
 
     if (me == 0) {
       if (screen) fprintf(screen,"  %d = max dihedrals/atom\n",maxall);
       if (logfile) fprintf(logfile,"  %d = max dihedrals/atom\n",maxall);
     }
-    atom->dihedral_per_atom = maxall + atom->extra_dihedral_per_atom;
+    atom->dihedral_per_atom = maxall;
     memory->destroy(count);
     return;
   }
@@ -1171,12 +1174,13 @@ void ReadData::impropers(int firstpass)
     for (int i = 0; i < nlocal; i++) max = MAX(max,count[i]);
     int maxall;
     MPI_Allreduce(&max,&maxall,1,MPI_INT,MPI_MAX,world);
+    maxall += atom->extra_improper_per_atom;
 
     if (me == 0) {
       if (screen) fprintf(screen,"  %d = max impropers/atom\n",maxall);
       if (logfile) fprintf(logfile,"  %d = max impropers/atom\n",maxall);
     }
-    atom->improper_per_atom = maxall + atom->extra_improper_per_atom;
+    atom->improper_per_atom = maxall;
     memory->destroy(count);
     return;
   }
@@ -1352,6 +1356,7 @@ void ReadData::paircoeffs()
     next = strchr(buf,'\n');
     *next = '\0';
     parse_coeffs(buf,NULL,1);
+    if (narg == 0) error->all(FLERR,"Unexpected end of PairCoeffs section");
     force->pair->coeff(narg,arg);
     buf = next + 1;
   }
@@ -1377,6 +1382,7 @@ void ReadData::pairIJcoeffs()
       next = strchr(buf,'\n');
       *next = '\0';
       parse_coeffs(buf,NULL,0);
+      if (narg == 0) error->all(FLERR,"Unexpected end of PairCoeffs section");
       force->pair->coeff(narg,arg);
       buf = next + 1;
     }
@@ -1398,6 +1404,7 @@ void ReadData::bondcoeffs()
     next = strchr(buf,'\n');
     *next = '\0';
     parse_coeffs(buf,NULL,0);
+    if (narg == 0) error->all(FLERR,"Unexpected end of BondCoeffs section");
     force->bond->coeff(narg,arg);
     buf = next + 1;
   }
@@ -1421,6 +1428,7 @@ void ReadData::anglecoeffs(int which)
     if (which == 0) parse_coeffs(buf,NULL,0);
     else if (which == 1) parse_coeffs(buf,"bb",0);
     else if (which == 2) parse_coeffs(buf,"ba",0);
+    if (narg == 0) error->all(FLERR,"Unexpected end of AngleCoeffs section");
     force->angle->coeff(narg,arg);
     buf = next + 1;
   }
@@ -1447,6 +1455,7 @@ void ReadData::dihedralcoeffs(int which)
     else if (which == 3) parse_coeffs(buf,"at",0);
     else if (which == 4) parse_coeffs(buf,"aat",0);
     else if (which == 5) parse_coeffs(buf,"bb13",0);
+    if (narg == 0) error->all(FLERR,"Unexpected end of DihedralCoeffs section");
     force->dihedral->coeff(narg,arg);
     buf = next + 1;
   }
@@ -1469,6 +1478,7 @@ void ReadData::impropercoeffs(int which)
     *next = '\0';
     if (which == 0) parse_coeffs(buf,NULL,0);
     else if (which == 1) parse_coeffs(buf,"aa",0);
+    if (narg == 0) error->all(FLERR,"Unexpected end of ImproperCoeffs section");
     force->improper->coeff(narg,arg);
     buf = next + 1;
   }

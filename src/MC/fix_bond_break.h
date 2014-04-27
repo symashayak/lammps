@@ -41,17 +41,41 @@ class FixBondBreak : public Fix {
   double memory_usage();
 
  private:
-  int me;
+  int me,nprocs;
   int btype,seed;
-  double cutsq,fraction;
+  double cutoff,cutsq,fraction;
+  int angleflag,dihedralflag,improperflag;
+  bigint lastcheck;
 
   int breakcount,breakcounttotal;
   int nmax;
-  tagint *partner;
+  tagint *partner,*finalpartner;
   double *distsq,*probability;
+
+  int nbreak,maxbreak;
+  tagint **broken;
+
+  tagint *copy;
 
   class RanMars *random;
   int nlevels_respa;
+
+  int commflag;
+  int nbroken;
+  int nangles,ndihedrals,nimpropers;
+
+  void check_ghosts();
+  void update_topology();
+  void break_angles(int, tagint, tagint);
+  void break_dihedrals(int, tagint, tagint);
+  void break_impropers(int, tagint, tagint);
+  void rebuild_special(int);
+  int dedup(int, int, tagint *);
+  
+  // DEBUG
+
+  void print_bb();
+  void print_copy(const char *, tagint, int, int, int, int *);
 };
 
 }

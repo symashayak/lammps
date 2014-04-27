@@ -26,6 +26,8 @@
 
 using namespace LAMMPS_NS;
 
+#define SMALL 0.00001
+
 /* ---------------------------------------------------------------------- */
 
 KSpace::KSpace(LAMMPS *lmp, int narg, char **arg) : Pointers(lmp)
@@ -44,7 +46,15 @@ KSpace::KSpace(LAMMPS *lmp, int narg, char **arg) : Pointers(lmp)
   gewaldflag = 0;
   minorder = 2;
   overlap_allowed = 1;
-  fftbench = 1;
+  fftbench = 0;
+
+  // default to using MPI collectives for FFT/remap only on IBM BlueGene
+
+#ifdef __bg__
+  collective_flag = 1;
+#else
+  collective_flag = 0;
+#endif
 
   kewaldflag = 0;
 
@@ -57,6 +67,7 @@ KSpace::KSpace(LAMMPS *lmp, int narg, char **arg) : Pointers(lmp)
   slab_volfactor = 1;
   suffix_flag = Suffix::NONE;
   adjust_cutoff_flag = 1;
+  scalar_pressure_flag = 0;
 
   accuracy_absolute = -1.0;
   accuracy_real_6 = -1.0;
@@ -235,6 +246,40 @@ void KSpace::ev_setup(int eflag, int vflag)
 }
 
 /* ----------------------------------------------------------------------
+   compute qsum,qsqsum,q2 and give error/warning if not charge neutral
+   only called initially or when particle count changes
+------------------------------------------------------------------------- */
+
+void KSpace::qsum_qsq(int flag)
+{
+  qsum = qsqsum = 0.0;
+  for (int i = 0; i < atom->nlocal; i++) {
+    qsum += atom->q[i];
+    qsqsum += atom->q[i]*atom->q[i];
+  }
+
+  double tmp;
+  MPI_Allreduce(&qsum,&tmp,1,MPI_DOUBLE,MPI_SUM,world);
+  qsum = tmp;
+  MPI_Allreduce(&qsqsum,&tmp,1,MPI_DOUBLE,MPI_SUM,world);
+  qsqsum = tmp;
+
+  if (qsqsum == 0.0)
+    error->all(FLERR,"Cannot use kspace solver on system with no charge");
+
+  q2 = qsqsum * force->qqrd2e;
+
+  // not yet sure of the correction needed for non-neutral systems
+
+  if (fabs(qsum) > SMALL) {
+    char str[128];
+    sprintf(str,"System is not charge neutral, net charge = %g",qsum);
+    if (flag) error->all(FLERR,str);
+    else if (comm->me == 0) error->warning(FLERR,str);
+  }
+}
+
+/* ----------------------------------------------------------------------
    estimate the accuracy of the short-range coulomb tables
 ------------------------------------------------------------------------- */
 
@@ -326,7 +371,8 @@ void KSpace::lamda2xvector(double *lamda, double *v)
    coords and return the tight (axis-aligned) bounding box, does not 
    preserve vector magnitude
    see http://www.loria.fr/~shornus/ellipsoid-bbox.html and
-   http://yiningkarlli.blogspot.com/2013/02/bounding-boxes-for-ellipsoidsfigure.html
+   http://yiningkarlli.blogspot.com/2013/02/
+     bounding-boxes-for-ellipsoidsfigure.html
 ------------------------------------------------------------------------- */
 
 void KSpace::kspacebbox(double r, double *b)
@@ -356,31 +402,31 @@ void KSpace::modify_params(int narg, char **arg)
   while (iarg < narg) {
     if (strcmp(arg[iarg],"mesh") == 0) {
       if (iarg+4 > narg) error->all(FLERR,"Illegal kspace_modify command");
-      nx_pppm = nx_msm_max = atoi(arg[iarg+1]);
-      ny_pppm = ny_msm_max = atoi(arg[iarg+2]);
-      nz_pppm = nz_msm_max = atoi(arg[iarg+3]);
+      nx_pppm = nx_msm_max = force->inumeric(FLERR,arg[iarg+1]);
+      ny_pppm = ny_msm_max = force->inumeric(FLERR,arg[iarg+2]);
+      nz_pppm = nz_msm_max = force->inumeric(FLERR,arg[iarg+3]);
       if (nx_pppm == 0 && ny_pppm == 0 && nz_pppm == 0) gridflag = 0;
       else gridflag = 1;
       iarg += 4;
     } else if (strcmp(arg[iarg],"mesh/disp") == 0) {
       if (iarg+4 > narg) error->all(FLERR,"Illegal kspace_modify command");
-      nx_pppm_6 = atoi(arg[iarg+1]);
-      ny_pppm_6 = atoi(arg[iarg+2]);
-      nz_pppm_6 = atoi(arg[iarg+3]);
+      nx_pppm_6 = force->inumeric(FLERR,arg[iarg+1]);
+      ny_pppm_6 = force->inumeric(FLERR,arg[iarg+2]);
+      nz_pppm_6 = force->inumeric(FLERR,arg[iarg+3]);
       if (nx_pppm_6 == 0 || ny_pppm_6 == 0 || nz_pppm_6 == 0) gridflag_6 = 0;
       else gridflag_6 = 1;
       iarg += 4;
     } else if (strcmp(arg[iarg],"order") == 0) {
       if (iarg+2 > narg) error->all(FLERR,"Illegal kspace_modify command");
-      order = atoi(arg[iarg+1]);
+      order = force->inumeric(FLERR,arg[iarg+1]);
       iarg += 2;
     } else if (strcmp(arg[iarg],"order/disp") == 0) {
       if (iarg+2 > narg) error->all(FLERR,"Illegal kspace_modify command");
-      order_6 = atoi(arg[iarg+1]);
+      order_6 = force->inumeric(FLERR,arg[iarg+1]);
       iarg += 2;
     } else if (strcmp(arg[iarg],"minorder") == 0) {
       if (iarg+2 > narg) error->all(FLERR,"Illegal kspace_modify command");
-      minorder = atoi(arg[iarg+1]);
+      minorder = force->inumeric(FLERR,arg[iarg+1]);
       if (minorder < 2) error->all(FLERR,"Illegal kspace_modify command");
       iarg += 2;
     } else if (strcmp(arg[iarg],"overlap") == 0) {
@@ -391,17 +437,17 @@ void KSpace::modify_params(int narg, char **arg)
       iarg += 2;
     } else if (strcmp(arg[iarg],"force") == 0) {
       if (iarg+2 > narg) error->all(FLERR,"Illegal kspace_modify command");
-      accuracy_absolute = atof(arg[iarg+1]);
+      accuracy_absolute = force->numeric(FLERR,arg[iarg+1]);
       iarg += 2;
     } else if (strcmp(arg[iarg],"gewald") == 0) {
       if (iarg+2 > narg) error->all(FLERR,"Illegal kspace_modify command");
-      g_ewald = atof(arg[iarg+1]);
+      g_ewald = force->numeric(FLERR,arg[iarg+1]);
       if (g_ewald == 0.0) gewaldflag = 0;
       else gewaldflag = 1;
       iarg += 2;
     } else if (strcmp(arg[iarg],"gewald/disp") == 0) {
       if (iarg+2 > narg) error->all(FLERR,"Illegal kspace_modify command");
-      g_ewald_6 = atof(arg[iarg+1]);
+      g_ewald_6 = force->numeric(FLERR,arg[iarg+1]);
       if (g_ewald_6 == 0.0) gewaldflag_6 = 0;
       else gewaldflag_6 = 1;
       iarg += 2;
@@ -411,7 +457,7 @@ void KSpace::modify_params(int narg, char **arg)
         slabflag = 2;
       } else {
         slabflag = 1;
-        slab_volfactor = atof(arg[iarg+1]);
+        slab_volfactor = force->numeric(FLERR,arg[iarg+1]);
         if (slab_volfactor <= 1.0)
           error->all(FLERR,"Bad kspace_modify slab parameter");
         if (slab_volfactor < 2.0 && comm->me == 0)
@@ -429,6 +475,12 @@ void KSpace::modify_params(int narg, char **arg)
       if (iarg+2 > narg) error->all(FLERR,"Illegal kspace_modify command");
       if (strcmp(arg[iarg+1],"yes") == 0) fftbench = 1;
       else if (strcmp(arg[iarg+1],"no") == 0) fftbench = 0;
+      else error->all(FLERR,"Illegal kspace_modify command");
+      iarg += 2;
+    } else if (strcmp(arg[iarg],"collective") == 0) {
+      if (iarg+2 > narg) error->all(FLERR,"Illegal kspace_modify command");
+      if (strcmp(arg[iarg+1],"yes") == 0) collective_flag = 1;
+      else if (strcmp(arg[iarg+1],"no") == 0) collective_flag = 0;
       else error->all(FLERR,"Illegal kspace_modify command");
       iarg += 2;
     } else if (strcmp(arg[iarg],"diff") == 0) {
@@ -475,6 +527,12 @@ void KSpace::modify_params(int narg, char **arg)
       splittol = atof(arg[iarg+1]);
       if (splittol >= 1.0) 
         error->all(FLERR,"Kspace_modify eigtol must be smaller than one");
+      iarg += 2;
+    } else if (strcmp(arg[iarg],"pressure/scalar") == 0) {
+      if (iarg+2 > narg) error->all(FLERR,"Illegal kspace_modify command");
+      if (strcmp(arg[iarg+1],"yes") == 0) scalar_pressure_flag = 1;
+      else if (strcmp(arg[iarg+1],"no") == 0) scalar_pressure_flag = 0;
+      else error->all(FLERR,"Illegal kspace_modify command");
       iarg += 2;
     } else error->all(FLERR,"Illegal kspace_modify command");
   }

@@ -38,7 +38,6 @@ class PairLJCutCoulMSMGPU : public PairLJCutCoulMSM {
  private:
   int gpu_mode;
   double cpu_time;
-  int *gpulist;
 };
 
 }
@@ -55,5 +54,9 @@ package
 E: Cannot use newton pair with lj/cut/coul/msm/gpu pair style
 
 Self-explanatory.
+
+E: Must use 'kspace_modify pressure/scalar no' with GPU MSM Pair styles
+
+The kspace scalar pressure option is not (yet) compatible with GPU MSM Pair styles.
 
 */

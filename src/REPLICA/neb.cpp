@@ -412,7 +412,7 @@ void NEB::readfile(char *file, int flag)
     // loop over lines of atom coords
     // tokenize the line into values
 
-    for (int i = 0; i < nchunk; i++) {
+    for (i = 0; i < nchunk; i++) {
       next = strchr(buf,'\n');
       
       values[0] = strtok(buf," \t\n\r\f");
@@ -505,8 +505,14 @@ void NEB::open(char *file)
   else {
 #ifdef LAMMPS_GZIP
     char gunzip[128];
-    sprintf(gunzip,"gunzip -c %s",file);
+    sprintf(gunzip,"gzip -c -d %s",file);
+
+#ifdef _WIN32
+    fp = _popen(gunzip,"rb");
+#else
     fp = popen(gunzip,"r");
+#endif
+
 #else
     error->one(FLERR,"Cannot open gzipped file");
 #endif

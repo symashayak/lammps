@@ -63,6 +63,10 @@ PairTersoffTable::PairTersoffTable(LAMMPS *lmp) : Pair(lmp)
   nparams = maxparam = 0;
   params = NULL;
   elem2param = NULL;
+  allocated = 0;
+
+  preGtetaFunction = preGtetaFunctionDerived = NULL;
+  preCutoffFunction = preCutoffFunctionDerived = NULL;
 }
 
 /* ----------------------------------------------------------------------
@@ -99,7 +103,6 @@ void PairTersoffTable::compute(int eflag, int vflag)
 
 
   int interpolIDX;
-  double r_ik_x, r_ik_y, r_ik_z;
   double directorCos_ij_x, directorCos_ij_y, directorCos_ij_z, directorCos_ik_x, directorCos_ik_y, directorCos_ik_z;
   double invR_ij, invR_ik, cosTeta;
   double repulsivePotential, attractivePotential;
@@ -235,7 +238,7 @@ void PairTersoffTable::compute(int eflag, int vflag)
     } // loop on J
 
 
-    // loop over neighbours of atom i
+    // loop over neighbors of atom i
     for (int neighbor_j = 0; neighbor_j < jnum; neighbor_j++) {
 
       double dr_ij[3], r_ij, f_ij[3];
@@ -286,7 +289,7 @@ void PairTersoffTable::compute(int eflag, int vflag)
 
       zeta = 0.0;
 
-      // first loop over neighbours of atom i except j - part 1/2
+      // first loop over neighbors of atom i except j - part 1/2
       for (int neighbor_k = 0; neighbor_k < neighbor_j; neighbor_k++) {
         double dr_ik[3], r_ik;
 
@@ -315,7 +318,7 @@ void PairTersoffTable::compute(int eflag, int vflag)
 
       }
 
-      // first loop over neighbours of atom i except j - part 2/2
+      // first loop over neighbors of atom i except j - part 2/2
       for (int neighbor_k = neighbor_j+1; neighbor_k < jnum; neighbor_k++) {
         double dr_ik[3], r_ik;
 
@@ -381,7 +384,7 @@ void PairTersoffTable::compute(int eflag, int vflag)
 
       factor_force_tot= 0.5*cutoffFunctionIJ*attractivePotential*betaZetaPowerDerivedIJK;
 
-      // second loop over neighbours of atom i except j, forces and virial only - part 1/2
+      // second loop over neighbors of atom i except j, forces and virial only - part 1/2
       for (int neighbor_k = 0; neighbor_k < neighbor_j; neighbor_k++) {
         double dr_ik[3], r_ik, f_ik[3];
 
@@ -446,7 +449,7 @@ void PairTersoffTable::compute(int eflag, int vflag)
         if (evflag) ev_tally3(i,j,k,evdwl,0.0,f_ij,f_ik,dr_ij,dr_ik);
       }
 
-      // second loop over neighbours of atom i except j, forces and virial only - part 2/2
+      // second loop over neighbors of atom i except j, forces and virial only - part 2/2
       for (int neighbor_k = neighbor_j+1; neighbor_k < jnum; neighbor_k++) {
         double dr_ik[3], r_ik, f_ik[3];
 
@@ -543,8 +546,6 @@ void PairTersoffTable::allocatePreLoops(void)
 
 void PairTersoffTable::deallocateGrids()
 {
-  int i,j;
-
   memory->destroy(exponential);
   memory->destroy(gtetaFunction);
   memory->destroy(gtetaFunctionDerived);
@@ -851,7 +852,7 @@ void PairTersoffTable::read_file(char *file)
 
   FILE *fp;
   if (comm->me == 0) {
-    fp = open_potential(file);
+    fp = force->open_potential(file);
     if (fp == NULL) {
       char str[128];
       sprintf(str,"Cannot open Tersoff potential file %s",file);

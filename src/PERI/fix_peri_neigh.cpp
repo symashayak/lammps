@@ -177,7 +177,7 @@ void FixPeriNeigh::setup(int vflag)
   if (!first) return;
   first = 0;
 
-  // invoke full neighbor list (will copy or build if necessary)
+  // build full neighbor list, will copy or build as necessary
 
   neighbor->build_one(list->index);
 
@@ -303,7 +303,6 @@ void FixPeriNeigh::setup(int vflag)
   double half_lc = 0.5*(domain->lattice->xlattice);
   double vfrac_scale;
   PairPeriLPS *pairlps = static_cast<PairPeriLPS*>(anypair);
-  PairPeriPMB *pairpmb = static_cast<PairPeriPMB*>(anypair);
   PairPeriVES *pairves = static_cast<PairPeriVES*>(anypair);
   PairPeriEPS *paireps = static_cast<PairPeriEPS*>(anypair);
 

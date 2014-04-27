@@ -107,14 +107,11 @@ PairLubricateU::~PairLubricateU()
 
 void PairLubricateU::compute(int eflag, int vflag)
 {
-  int i,j,ii,jj,inum,jnum,itype,jtype;
+  int i,j;
 
   double **x = atom->x;
-  double **v = atom->v;
   double **f = atom->f;
-  double **omega = atom->omega;
   double **torque = atom->torque;
-  int *type = atom->type;
   int nlocal = atom->nlocal;
   int nghost = atom->nghost;
   int nall = nlocal + nghost;
@@ -184,25 +181,16 @@ void PairLubricateU::compute(int eflag, int vflag)
 
 void PairLubricateU::stage_one()
 {
-  int i,j,ii,jj,inum,jnum,itype,jtype;
+  int i,j,ii,inum;
 
   double **x = atom->x;
   double **v = atom->v;
   double **f = atom->f;
   double **omega = atom->omega;
   double **torque = atom->torque;
-  double *radius = atom->radius;
-  double *rmass = atom->rmass;
-  int *type = atom->type;
-  int nlocal = atom->nlocal;
 
   int newton_pair = force->newton_pair;
-  double vxmu2f = force->vxmu2f;
-  double inv_inertia,mo_inertia;
   int *ilist;
-
-  double radi;
-  int nprocs = comm->nprocs;
 
   inum = list->inum;
   ilist = list->ilist;
@@ -366,9 +354,6 @@ void PairLubricateU::stage_one()
 
   for (ii=0;ii<inum;ii++) {
     i = ilist[ii];
-    itype = type[i];
-    radi = radius[i];
-
     v[i][0] = v[i][0] + gdot*x[i][1];
     omega[i][2] = omega[i][2] - gdot/2.0;
   }
@@ -398,23 +383,14 @@ void PairLubricateU::intermediates(int nall, double **xl)
 
 void PairLubricateU::stage_two(double **x)
 {
-  int i,j,ii,jj,inum,jnum,itype,jtype;
+  int i,j,ii,inum;
   double **v = atom->v;
   double **f = atom->f;
   double **omega = atom->omega;
   double **torque = atom->torque;
-  double *radius = atom->radius;
-  double *rmass = atom->rmass;
-  int *type = atom->type;
-  int nlocal = atom->nlocal;
 
   int newton_pair = force->newton_pair;
-  double vxmu2f = force->vxmu2f;
-  double inv_inertia,mo_inertia;
   int *ilist;
-
-  double radi;
-  int nprocs = comm->nprocs;
 
   inum = list->inum;
   ilist = list->ilist;
@@ -566,9 +542,6 @@ void PairLubricateU::stage_two(double **x)
 
   for (ii=0;ii<inum;ii++) {
     i = ilist[ii];
-    itype = type[i];
-    radi = radius[i];
-
     v[i][0] = v[i][0] + gdot*x[i][1];
     omega[i][2] = omega[i][2] - gdot/2.0;
   }
@@ -582,11 +555,10 @@ void PairLubricateU::stage_two(double **x)
 void PairLubricateU::compute_Fh(double **x)
 {
   int i,j,ii,jj,inum,jnum,itype,jtype;
-  double xtmp,ytmp,ztmp,delx,dely,delz,fpair,fx,fy,fz,tx,ty,tz;
-  double rsq,r,h_sep,radi,tfmag;
+  double xtmp,ytmp,ztmp,delx,dely,delz,fx,fy,fz;
+  double rsq,r,h_sep;
   double vr1,vr2,vr3,vnnr,vn1,vn2,vn3;
-  double vt1,vt2,vt3,wdotn,wt1,wt2,wt3;
-  double inv_inertia;
+  double vt1,vt2,vt3;
   int *ilist,*jlist,*numneigh,**firstneigh;
 
   double **v = atom->v;
@@ -599,9 +571,10 @@ void PairLubricateU::compute_Fh(double **x)
   int nghost = atom->nghost;
   int newton_pair = force->newton_pair;
 
+  double radi;
+
   double vxmu2f = force->vxmu2f;
-  int overlaps = 0;
-  double vi[3],vj[3],wi[3],wj[3],xl[3],a_sq,a_sh,a_pu,Fbmag,del,delmin,eta;
+  double vi[3],vj[3],wi[3],wj[3],xl[3],a_sq,a_sh;
 
   inum = list->inum;
   ilist = list->ilist;
@@ -764,10 +737,6 @@ void PairLubricateU::compute_Fh(double **x)
 
         h_sep = r - 2.0*radi;
 
-        // check for overlaps
-
-        if (h_sep < 0.0) overlaps++;
-
         // If less than the minimum gap use the minimum gap instead
 
         if (r < cut_inner[itype][jtype])
@@ -819,11 +788,10 @@ void PairLubricateU::compute_Fh(double **x)
 void PairLubricateU::compute_RU()
 {
   int i,j,ii,jj,inum,jnum,itype,jtype;
-  double xtmp,ytmp,ztmp,delx,dely,delz,fpair,fx,fy,fz,tx,ty,tz;
-  double rsq,r,h_sep,radi,tfmag;
+  double xtmp,ytmp,ztmp,delx,dely,delz,fx,fy,fz,tx,ty,tz;
+  double rsq,r,h_sep,radi;
   double vr1,vr2,vr3,vnnr,vn1,vn2,vn3;
   double vt1,vt2,vt3,wdotn,wt1,wt2,wt3;
-  double inv_inertia;
   int *ilist,*jlist,*numneigh,**firstneigh;
 
   double **x = atom->x;
@@ -832,15 +800,13 @@ void PairLubricateU::compute_RU()
   double **omega = atom->omega;
   double **torque = atom->torque;
   double *radius = atom->radius;
-  double *rmass = atom->rmass;
   int *type = atom->type;
   int nlocal = atom->nlocal;
   int nghost = atom->nghost;
   int newton_pair = force->newton_pair;
 
   double vxmu2f = force->vxmu2f;
-  int overlaps = 0;
-  double vi[3],vj[3],wi[3],wj[3],xl[3],a_sq,a_sh,a_pu,Fbmag,del,delmin,eta;
+  double vi[3],vj[3],wi[3],wj[3],xl[3],a_sq,a_sh,a_pu;
 
   inum = list->inum;
   ilist = list->ilist;
@@ -969,10 +935,6 @@ void PairLubricateU::compute_RU()
         // Find the scalar resistances a_sq and a_sh
 
         h_sep = r - 2.0*radi;
-
-        // check for overlaps
-
-        if(h_sep < 0.0) overlaps++;
 
         // If less than the minimum gap use the minimum gap instead
 
@@ -1098,11 +1060,10 @@ void PairLubricateU::compute_RU()
 void PairLubricateU::compute_RU(double **x)
 {
   int i,j,ii,jj,inum,jnum,itype,jtype;
-  double xtmp,ytmp,ztmp,delx,dely,delz,fpair,fx,fy,fz,tx,ty,tz;
-  double rsq,r,h_sep,radi,tfmag;
+  double xtmp,ytmp,ztmp,delx,dely,delz,fx,fy,fz,tx,ty,tz;
+  double rsq,r,h_sep,radi;
   double vr1,vr2,vr3,vnnr,vn1,vn2,vn3;
   double vt1,vt2,vt3,wdotn,wt1,wt2,wt3;
-  double inv_inertia;
   int *ilist,*jlist,*numneigh,**firstneigh;
 
   double **v = atom->v;
@@ -1116,8 +1077,7 @@ void PairLubricateU::compute_RU(double **x)
   int newton_pair = force->newton_pair;
 
   double vxmu2f = force->vxmu2f;
-  int overlaps = 0;
-  double vi[3],vj[3],wi[3],wj[3],xl[3],a_sq,a_sh,a_pu,Fbmag,del,delmin,eta;
+  double vi[3],vj[3],wi[3],wj[3],xl[3],a_sq,a_sh,a_pu;
 
   inum = list->inum;
   ilist = list->ilist;
@@ -1246,10 +1206,6 @@ void PairLubricateU::compute_RU(double **x)
         // Find the scalar resistances a_sq and a_sh
 
         h_sep = r - 2.0*radi;
-
-        // check for overlaps
-
-        if(h_sep < 0.0) overlaps++;
 
         // If less than the minimum gap use the minimum gap instead
 
@@ -1378,27 +1334,22 @@ void PairLubricateU::compute_RU(double **x)
 void PairLubricateU::compute_RE()
 {
   int i,j,ii,jj,inum,jnum,itype,jtype;
-  double xtmp,ytmp,ztmp,delx,dely,delz,fpair,fx,fy,fz,tx,ty,tz;
-  double rsq,r,h_sep,radi,tfmag;
+  double xtmp,ytmp,ztmp,delx,dely,delz,fx,fy,fz,tx,ty,tz;
+  double rsq,r,h_sep,radi;
   double vr1,vr2,vr3,vnnr,vn1,vn2,vn3;
   double vt1,vt2,vt3;
-  double inv_inertia;
   int *ilist,*jlist,*numneigh,**firstneigh;
 
   double **x = atom->x;
-  double **v = atom->v;
   double **f = atom->f;
-  double **omega = atom->omega;
   double **torque = atom->torque;
   double *radius = atom->radius;
   int *type = atom->type;
   int nlocal = atom->nlocal;
-  int nghost = atom->nghost;
   int newton_pair = force->newton_pair;
 
   double vxmu2f = force->vxmu2f;
-  int overlaps = 0;
-  double vi[3],vj[3],wi[3],wj[3],xl[3],a_sq,a_sh,a_pu,Fbmag,del,delmin,eta;
+  double xl[3],a_sq,a_sh;
 
   inum = list->inum;
   ilist = list->ilist;
@@ -1442,10 +1393,6 @@ void PairLubricateU::compute_RE()
 
         h_sep = r - 2.0*radi;
 
-        // check for overlaps
-
-        if(h_sep < 0.0) overlaps++;
-
         // If less than the minimum gap use the minimum gap instead
 
         if (r < cut_inner[itype][jtype])
@@ -1466,7 +1413,6 @@ void PairLubricateU::compute_RE()
 
         if (flaglog) {
           a_sh = 6*MY_PI*mu*radi*(1.0/6.0*log(1/h_sep));
-          a_pu = 8.0*MY_PI*mu*pow(radi,3.0)*(3.0/160.0*log(1.0/h_sep));
         }
 
         // Relative velocity at the point of closest approach due to Ef only
@@ -1538,16 +1484,10 @@ void PairLubricateU::compute_RE()
             torque[j][1] -= vxmu2f*ty;
             torque[j][2] -= vxmu2f*tz;
           }
-
-          // NOTE No a_pu term needed as they add up to zero
         }
       }
     }
   }
-
-  int print_overlaps = 0;
-  if (print_overlaps && overlaps)
-    printf("Number of overlaps=%d\n",overlaps);
 }
 
 /* ----------------------------------------------------------------------
@@ -1560,26 +1500,21 @@ void PairLubricateU::compute_RE()
 void PairLubricateU::compute_RE(double **x)
 {
   int i,j,ii,jj,inum,jnum,itype,jtype;
-  double xtmp,ytmp,ztmp,delx,dely,delz,fpair,fx,fy,fz,tx,ty,tz;
-  double rsq,r,h_sep,radi,tfmag;
+  double xtmp,ytmp,ztmp,delx,dely,delz,fx,fy,fz,tx,ty,tz;
+  double rsq,r,h_sep,radi;
   double vr1,vr2,vr3,vnnr,vn1,vn2,vn3;
   double vt1,vt2,vt3;
-  double inv_inertia;
   int *ilist,*jlist,*numneigh,**firstneigh;
 
-  double **v = atom->v;
   double **f = atom->f;
-  double **omega = atom->omega;
   double **torque = atom->torque;
   double *radius = atom->radius;
   int *type = atom->type;
   int nlocal = atom->nlocal;
-  int nghost = atom->nghost;
   int newton_pair = force->newton_pair;
 
   double vxmu2f = force->vxmu2f;
-  int overlaps = 0;
-  double vi[3],vj[3],wi[3],wj[3],xl[3],a_sq,a_sh,a_pu,Fbmag,del,delmin,eta;
+  double xl[3],a_sq,a_sh;
 
   if (!flagHI) return;
 
@@ -1623,10 +1558,6 @@ void PairLubricateU::compute_RE(double **x)
 
         h_sep = r - 2.0*radi;
 
-        // check for overlaps
-
-        if(h_sep < 0.0) overlaps++;
-
         // If less than the minimum gap use the minimum gap instead
 
         if (r < cut_inner[itype][jtype])
@@ -1647,7 +1578,6 @@ void PairLubricateU::compute_RE(double **x)
 
         if (flaglog) {
           a_sh = 6*MY_PI*mu*radi*(1.0/6.0*log(1/h_sep));
-          a_pu = 8.0*MY_PI*mu*pow(radi,3.0)*(3.0/160.0*log(1.0/h_sep));
         }
 
         // Relative velocity at the point of closest approach due to Ef only
@@ -1719,16 +1649,10 @@ void PairLubricateU::compute_RE(double **x)
             torque[j][1] -= vxmu2f*ty;
             torque[j][2] -= vxmu2f*tz;
           }
-
-          // NOTE No a_pu term needed as they add up to zero
         }
       }
     }
   }
-
-  int print_overlaps = 0;
-  if (print_overlaps && overlaps)
-    printf("Number of overlaps=%d\n",overlaps);
 }
 
 
@@ -1849,18 +1773,17 @@ void PairLubricateU::init_style()
   if (comm->ghost_velocity == 0)
     error->all(FLERR,"Pair lubricateU requires ghost atoms store velocity");
 
-  int irequest = neighbor->request(this);
+  neighbor->request(this);
 
   // require that atom radii are identical within each type
   // require monodisperse system with same radii for all types
 
-  double radi, radtype;
+  double radtype;
   for (int i = 1; i <= atom->ntypes; i++) {
     if (!atom->radius_consistency(i,radtype))
       error->all(FLERR,"Pair lubricateU requires monodisperse particles");
     if (i > 1 && radtype != rad)
       error->all(FLERR,"Pair lubricateU requires monodisperse particles");
-    radi = radtype;
   }
 
   // check for fix deform, if exists it must use "remap v"
@@ -2053,21 +1976,10 @@ void PairLubricateU::copy_vec_uo(int inum, double *xcg,
                                  double **v, double **omega)
 {
   int i,j,ii;
-  int *ilist;
-  int itype;
-  double radi;
-  double inertia;
-
-  double *rmass = atom->rmass;
-  int *type = atom->type;
-
-  ilist = list->ilist;
+  int *ilist = list->ilist;
 
   for (ii=0;ii<inum;ii++) {
     i = ilist[ii];
-    itype = type[i];
-    radi = atom->radius[i];
-    inertia = 0.4*rmass[i]*radi*radi;
 
     for (j=0;j<3;j++) {
       v[i][j] = xcg[6*ii+j];

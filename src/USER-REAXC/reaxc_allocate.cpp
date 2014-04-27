@@ -47,8 +47,6 @@
 int PreAllocate_Space( reax_system *system, control_params *control,
                        storage *workspace, MPI_Comm comm )
 {
-  int  i;
-
   int mincap = system->mincap;
   double safezone = system->safezone;
 
@@ -288,13 +286,11 @@ int Allocate_Workspace( reax_system *system, control_params *control,
                         storage *workspace, int local_cap, int total_cap,
                         MPI_Comm comm, char *msg )
 {
-  int i, total_real, total_rvec, local_int, local_real, local_rvec;
+  int i, total_real, total_rvec, local_rvec;
 
   workspace->allocated = 1;
   total_real = total_cap * sizeof(real);
   total_rvec = total_cap * sizeof(rvec);
-  local_int = local_cap * sizeof(int);
-  local_real = local_cap * sizeof(real);
   local_rvec = local_cap * sizeof(rvec);
 
   /* communication storage */
@@ -553,10 +549,9 @@ int Estimate_GCell_Population( reax_system* system, MPI_Comm comm )
   ivec c;
   grid *g;
   grid_cell *gc;
-  simulation_box *big_box, *my_ext_box;
+  simulation_box *my_ext_box;
   reax_atom *atoms;
 
-  big_box    = &(system->big_box);
   my_ext_box = &(system->my_ext_box);
   g          = &(system->my_grid);
   atoms      = system->my_atoms;
@@ -564,10 +559,6 @@ int Estimate_GCell_Population( reax_system* system, MPI_Comm comm )
 
   for( l = 0; l < system->n; l++ ) {
     for( d = 0; d < 3; ++d ) {
-      //if( atoms[l].x[d] < big_box->min[d] )
-      //  atoms[l].x[d] += big_box->box_norms[d];
-      //else if( atoms[l].x[d] >= big_box->max[d] )
-      //  atoms[l].x[d] -= big_box->box_norms[d];
 
       c[d] = (int)((atoms[l].x[d]-my_ext_box->min[d])*g->inv_len[d]);
 
@@ -759,15 +750,11 @@ void ReAllocate( reax_system *system, control_params *control,
                  simulation_data *data, storage *workspace, reax_list **lists,
                  mpi_datatypes *mpi_data )
 {
-  int i, j, k, p;
-  int num_bonds, est_3body, nflag, Nflag, Hflag, mpi_flag, ret, total_send;
+  int num_bonds, est_3body, Hflag, ret;
   int renbr, newsize;
   reallocate_data *realloc;
   reax_list *far_nbrs;
-  sparse_matrix *H;
   grid *g;
-  neighbor_proc *nbr_pr;
-  mpi_out_data *nbr_data;
   MPI_Comm comm;
   char msg[200];
 
@@ -798,14 +785,15 @@ void ReAllocate( reax_system *system, control_params *control,
 #endif
 
   // IMPORTANT: LOOSE ZONES CHECKS ARE DISABLED FOR NOW BY &&'ing with 0!!!
-  nflag = 0;
+
+  int nflag = 0;
   if( system->n >= DANGER_ZONE * system->local_cap ||
       (0 && system->n <= LOOSE_ZONE * system->local_cap) ) {
     nflag = 1;
     system->local_cap = MAX( (int)(system->n * safezone), mincap );
   }
 
-  Nflag = 0;
+  int Nflag = 0;
   if( system->N >= DANGER_ZONE * system->total_cap ||
       (0 && system->N <= LOOSE_ZONE * system->total_cap) ) {
     Nflag = 1;
