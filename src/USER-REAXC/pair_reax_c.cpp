@@ -17,6 +17,7 @@
    Per-atom energy/virial added by Ray Shan (Sandia)
    Fix reax/c/bonds and fix reax/c/species for pair_style reax/c added by 
    	Ray Shan (Sandia)
+   Hybrid and hybrid/overlay compatibility added by Ray Shan (Sandia)
 ------------------------------------------------------------------------- */
 
 #include "pair_reax_c.h"
@@ -283,11 +284,12 @@ void PairReaxC::coeff( int nargs, char **args )
   // read args that map atom types to elements in potential file
   // map[i] = which element the Ith atom type is, -1 if NULL
 
-  int itmp;
+  int itmp = 0;
   int nreax_types = system->reax_param.num_atom_types;
   for (int i = 3; i < nargs; i++) {
     if (strcmp(args[i],"NULL") == 0) {
       map[i-2] = -1;
+      itmp ++;
       continue;
     }
   }
@@ -295,7 +297,6 @@ void PairReaxC::coeff( int nargs, char **args )
   int n = atom->ntypes;
 
   // pair_coeff element map
-  itmp = 0;
   for (int i = 3; i < nargs; i++)
     for (int j = 0; j < nreax_types; j++)
       if (strcasecmp(args[i],system->reax_param.sbp[j].name) == 0) {
@@ -307,14 +308,22 @@ void PairReaxC::coeff( int nargs, char **args )
   if (itmp != n) 
     error->all(FLERR,"Non-existent ReaxFF type");
 
+  for (int i = 1; i <= n; i++)
+    for (int j = i; j <= n; j++)
+      setflag[i][j] = 0;
+
+  // set setflag i,j for type pairs where both are mapped to elements
+
   int count = 0;
   for (int i = 1; i <= n; i++)
-    for (int j = i; j <= n; j++) {
-      setflag[i][j] = 1;
-      count++;
-    }
+    for (int j = i; j <= n; j++)
+      if (map[i] >= 0 && map[j] >= 0) {
+        setflag[i][j] = 1;
+        count++;
+      }
 
   if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
+
 }
 
 /* ---------------------------------------------------------------------- */
@@ -367,6 +376,7 @@ void PairReaxC::init_style( )
     delete [] fixarg;
     fix_reax = (FixReaxC *) modify->fix[modify->nfix-1];
   }
+
 }
 
 /* ---------------------------------------------------------------------- */
@@ -429,12 +439,23 @@ void PairReaxC::setup( )
 
     ReAllocate( system, control, data, workspace, &lists, mpi_data );
   }
+
+  ngroup = 0;
+  int ngroup_sum = 0;
+  for (int i = 0; i < list->inum; i++) {
+    ngroup ++;
+  }
+  MPI_Allreduce( &ngroup, &ngroup_sum, 1, MPI_INT, MPI_SUM, world );
+  ngroup = ngroup_sum;
+
 }
 
 /* ---------------------------------------------------------------------- */
 
 double PairReaxC::init_one(int i, int j)
 {
+  if (setflag[i][j] == 0) error->all(FLERR,"All pair coeffs are not set");
+
   cutghost[i][j] = cutghost[j][i] = cutmax;
   return cutmax;
 }
@@ -485,7 +506,7 @@ void PairReaxC::compute(int eflag, int vflag)
   // forces
 
   Compute_Forces(system,control,data,workspace,&lists,out_control,mpi_data);
-  read_reax_forces();
+  read_reax_forces(vflag);
 
   for(int k = 0; k < system->N; ++k) {
     num_bonds[k] = system->my_atoms[k].num_bonds;
@@ -610,31 +631,23 @@ void PairReaxC::set_far_nbr( far_neighbor_data *fdest,
 int PairReaxC::estimate_reax_lists()
 {
   int itr_i, itr_j, i, j;
-  int nlocal, nghost, num_nbrs, num_marked;
+  int num_nbrs, num_marked;
   int *ilist, *jlist, *numneigh, **firstneigh, *marked;
   double d_sqr;
   rvec dvec;
-  double *dist, **x;
-  reax_list *far_nbrs;
-  far_neighbor_data *far_list;
+  double **x;
 
   int mincap = system->mincap;
   double safezone = system->safezone;
 
   x = atom->x;
-  nlocal = atom->nlocal;
-  nghost = atom->nghost;
   ilist = list->ilist;
   numneigh = list->numneigh;
   firstneigh = list->firstneigh;
 
-  far_nbrs = lists + FAR_NBRS;
-  far_list = far_nbrs->select.far_nbr_list;
-
   num_nbrs = 0;
   num_marked = 0;
   marked = (int*) calloc( system->N, sizeof(int) );
-  dist = (double*) calloc( system->N, sizeof(double) );
 
   int numall = list->inum + list->gnum;
 
@@ -655,7 +668,6 @@ int PairReaxC::estimate_reax_lists()
   }
 
   free( marked );
-  free( dist );
 
   return static_cast<int> (MAX( num_nbrs*safezone, mincap*MIN_NBRS ));
 }
@@ -665,8 +677,8 @@ int PairReaxC::estimate_reax_lists()
 int PairReaxC::write_reax_lists()
 {
   int itr_i, itr_j, i, j;
-  int nlocal, nghost, num_nbrs;
-  int *ilist, *jlist, *numneigh, **firstneigh, *marked;
+  int num_nbrs;
+  int *ilist, *jlist, *numneigh, **firstneigh;
   double d_sqr;
   rvec dvec;
   double *dist, **x;
@@ -674,8 +686,6 @@ int PairReaxC::write_reax_lists()
   far_neighbor_data *far_list;
 
   x = atom->x;
-  nlocal = atom->nlocal;
-  nghost = atom->nghost;
   ilist = list->ilist;
   numneigh = list->numneigh;
   firstneigh = list->firstneigh;
@@ -684,14 +694,12 @@ int PairReaxC::write_reax_lists()
   far_list = far_nbrs->select.far_nbr_list;
 
   num_nbrs = 0;
-  marked = (int*) calloc( system->N, sizeof(int) );
   dist = (double*) calloc( system->N, sizeof(double) );
 
   int numall = list->inum + list->gnum;
 
   for( itr_i = 0; itr_i < numall; ++itr_i ){
     i = ilist[itr_i];
-    marked[i] = 1;
     jlist = firstneigh[i];
     Set_Start_Index( i, num_nbrs, far_nbrs );
 
@@ -709,7 +717,6 @@ int PairReaxC::write_reax_lists()
     Set_End_Index( i, num_nbrs, far_nbrs );
   }
 
-  free( marked );
   free( dist );
 
   return num_nbrs;
@@ -717,17 +724,18 @@ int PairReaxC::write_reax_lists()
 
 /* ---------------------------------------------------------------------- */
 
-void PairReaxC::read_reax_forces()
+void PairReaxC::read_reax_forces(int vflag)
 {
   for( int i = 0; i < system->N; ++i ) {
     system->my_atoms[i].f[0] = workspace->f[i][0];
     system->my_atoms[i].f[1] = workspace->f[i][1];
     system->my_atoms[i].f[2] = workspace->f[i][2];
 
-    atom->f[i][0] = -workspace->f[i][0];
-    atom->f[i][1] = -workspace->f[i][1];
-    atom->f[i][2] = -workspace->f[i][2];
+    atom->f[i][0] += -workspace->f[i][0];
+    atom->f[i][1] += -workspace->f[i][1];
+    atom->f[i][2] += -workspace->f[i][2];
   }
+
 }
 
 /* ---------------------------------------------------------------------- */
@@ -791,7 +799,7 @@ double PairReaxC::memory_usage()
 void PairReaxC::FindBond()
 {
   int i, j, pj, nj;
-  double bo_tmp, bo_cut, r_tmp;
+  double bo_tmp, bo_cut;
 
   bond_data *bo_ij;
   bo_cut = 0.10;
@@ -804,7 +812,6 @@ void PairReaxC::FindBond()
       if (j < i) continue;
 
       bo_tmp = bo_ij->bo_data.BO;
-      r_tmp = bo_ij->d;
 
       if (bo_tmp >= bo_cut ) {
 	tmpid[i][nj] = j;
@@ -815,5 +822,3 @@ void PairReaxC::FindBond()
     }
   }
 }
-
-/* ---------------------------------------------------------------------- */

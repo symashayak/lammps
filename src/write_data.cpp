@@ -218,8 +218,9 @@ void WriteData::header()
   fprintf(fp,BIGINT_FORMAT " atoms\n",atom->natoms);
   fprintf(fp,"%d atom types\n",atom->ntypes);
 
-  if(atom->molecular == 1 ){
+  // do not write molecular topology info for atom_style template
 
+  if (atom->molecular == 1) {
     if (atom->nbonds || atom->nbondtypes) {
       fprintf(fp,BIGINT_FORMAT " bonds\n",nbonds);
       fprintf(fp,"%d bond types\n",atom->nbondtypes);
@@ -236,7 +237,6 @@ void WriteData::header()
       fprintf(fp,BIGINT_FORMAT " impropers\n",atom->nimpropers);
       fprintf(fp,"%d improper types\n",atom->nimpropertypes);
     }
-
   }
 
   for (int i = 0; i < modify->nfix; i++)

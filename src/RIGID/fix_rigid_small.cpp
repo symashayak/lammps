@@ -59,6 +59,9 @@ FixRigidSmall *FixRigidSmall::frsptr;
 
 #define DELTA_BODY 10000
 
+enum{NONE,XYZ,XY,YZ,XZ};        // same as in FixRigid
+enum{ISO,ANISO,TRICLINIC};      // same as in FixRigid
+
 enum{FULL_BODY,INITIAL,FINAL,FORCE_TORQUE,VCM_ANGMOM,XCM_MASS,ITENSOR,DOF};
 
 /* ---------------------------------------------------------------------- */
@@ -123,7 +126,24 @@ FixRigidSmall::FixRigidSmall(LAMMPS *lmp, int narg, char **arg) :
   int seed;
   langflag = 0;
   infile = NULL;
-  onemol = NULL;
+  onemols = NULL;
+
+  tstat_flag = 0;
+  pstat_flag = 0;
+  allremap = 1;
+  id_dilate = NULL;
+  t_chain = 10;
+  t_iter = 1;
+  t_order = 3;
+  p_chain = 10;
+
+  pcouple = NONE;
+  pstyle = ANISO;
+
+  for (int i = 0; i < 3; i++) {
+    p_start[i] = p_stop[i] = p_period[i] = 0.0;
+    p_flag[i] = 0;
+  }
 
   int iarg = 4;
   while (iarg < narg) {
@@ -154,29 +174,153 @@ FixRigidSmall::FixRigidSmall(LAMMPS *lmp, int narg, char **arg) :
       if (imol == -1)
         error->all(FLERR,"Molecule template ID for "
                    "fix rigid/small does not exist");
-      if (atom->molecules[imol]->nset > 1 && comm->me == 0)
-        error->warning(FLERR,"Molecule template for "
-                       "fix rigid/small has multiple molecules");
-      onemol = atom->molecules[imol];
+      onemols = &atom->molecules[imol];
+      nmol = onemols[0]->nset;
       iarg += 2;
+
+    } else if (strcmp(arg[iarg],"temp") == 0) {
+      if (iarg+4 > narg) error->all(FLERR,"Illegal fix rigid/small command");
+      if (strcmp(style,"rigid/nvt/small") != 0 && 
+          strcmp(style,"rigid/npt/small") != 0)
+        error->all(FLERR,"Illegal fix rigid command");
+      tstat_flag = 1;
+      t_start = force->numeric(FLERR,arg[iarg+1]);
+      t_stop = force->numeric(FLERR,arg[iarg+2]);
+      t_period = force->numeric(FLERR,arg[iarg+3]);
+      iarg += 4;
+
+    } else if (strcmp(arg[iarg],"iso") == 0) {
+      if (iarg+4 > narg) error->all(FLERR,"Illegal fix rigid/small command");
+      if (strcmp(style,"rigid/npt/small") != 0 && 
+          strcmp(style,"rigid/nph/small") != 0)
+	      error->all(FLERR,"Illegal fix rigid/small command");
+      pcouple = XYZ;
+      p_start[0] = p_start[1] = p_start[2] = force->numeric(FLERR,arg[iarg+1]);
+      p_stop[0] = p_stop[1] = p_stop[2] = force->numeric(FLERR,arg[iarg+2]);
+      p_period[0] = p_period[1] = p_period[2] = 
+        force->numeric(FLERR,arg[iarg+3]);
+      p_flag[0] = p_flag[1] = p_flag[2] = 1;
+      if (domain->dimension == 2) {
+	      p_start[2] = p_stop[2] = p_period[2] = 0.0;
+      	p_flag[2] = 0;
+      }
+      iarg += 4;
+
+    } else if (strcmp(arg[iarg],"aniso") == 0) {
+      if (iarg+4 > narg) error->all(FLERR,"Illegal fix rigid/small command");
+      if (strcmp(style,"rigid/npt/small") != 0 && 
+          strcmp(style,"rigid/nph/small") != 0)
+	      error->all(FLERR,"Illegal fix rigid/small command");
+      p_start[0] = p_start[1] = p_start[2] = force->numeric(FLERR,arg[iarg+1]);
+      p_stop[0] = p_stop[1] = p_stop[2] = force->numeric(FLERR,arg[iarg+2]);
+      p_period[0] = p_period[1] = p_period[2] = 
+        force->numeric(FLERR,arg[iarg+3]);
+      p_flag[0] = p_flag[1] = p_flag[2] = 1;
+      if (domain->dimension == 2) {
+      	p_start[2] = p_stop[2] = p_period[2] = 0.0;
+	      p_flag[2] = 0;
+      }
+      iarg += 4;
+
+    } else if (strcmp(arg[iarg],"x") == 0) {
+      if (iarg+4 > narg) error->all(FLERR,"Illegal fix rigid/small command");
+      p_start[0] = force->numeric(FLERR,arg[iarg+1]);
+      p_stop[0] = force->numeric(FLERR,arg[iarg+2]);
+      p_period[0] = force->numeric(FLERR,arg[iarg+3]);
+      p_flag[0] = 1;
+      iarg += 4;
+
+    } else if (strcmp(arg[iarg],"y") == 0) {
+      if (iarg+4 > narg) error->all(FLERR,"Illegal fix rigid/small command");
+      p_start[1] = force->numeric(FLERR,arg[iarg+1]);
+      p_stop[1] = force->numeric(FLERR,arg[iarg+2]);
+      p_period[1] = force->numeric(FLERR,arg[iarg+3]);
+      p_flag[1] = 1;
+      iarg += 4;
+
+    } else if (strcmp(arg[iarg],"z") == 0) {
+      if (iarg+4 > narg) error->all(FLERR,"Illegal fix rigid/small command");
+      p_start[2] = force->numeric(FLERR,arg[iarg+1]);
+      p_stop[2] = force->numeric(FLERR,arg[iarg+2]);
+      p_period[2] = force->numeric(FLERR,arg[iarg+3]);
+      p_flag[2] = 1;
+      iarg += 4;
+
+    } else if (strcmp(arg[iarg],"couple") == 0) {
+      if (iarg+2 > narg) error->all(FLERR,"Illegal fix rigid/small command");
+      if (strcmp(arg[iarg+1],"xyz") == 0) pcouple = XYZ;
+      else if (strcmp(arg[iarg+1],"xy") == 0) pcouple = XY;
+      else if (strcmp(arg[iarg+1],"yz") == 0) pcouple = YZ;
+      else if (strcmp(arg[iarg+1],"xz") == 0) pcouple = XZ;
+      else if (strcmp(arg[iarg+1],"none") == 0) pcouple = NONE;
+      else error->all(FLERR,"Illegal fix rigid/small command");
+      iarg += 2;
+
+    } else if (strcmp(arg[iarg],"dilate") == 0) {
+      if (iarg+2 > narg) 
+        error->all(FLERR,"Illegal fix rigid/small nvt/npt/nph command");
+      if (strcmp(arg[iarg+1],"all") == 0) allremap = 1;
+      else {
+        allremap = 0;
+        delete [] id_dilate;
+        int n = strlen(arg[iarg+1]) + 1;
+        id_dilate = new char[n];
+        strcpy(id_dilate,arg[iarg+1]);
+        int idilate = group->find(id_dilate);
+        if (idilate == -1)
+          error->all(FLERR,"Fix rigid/small nvt/npt/nph dilate group ID "
+                     "does not exist");
+      }
+      iarg += 2;
+
+    } else if (strcmp(arg[iarg],"tparam") == 0) {
+      if (iarg+4 > narg) error->all(FLERR,"Illegal fix rigid/small command");
+      if (strcmp(style,"rigid/nvt/small") != 0 && 
+          strcmp(style,"rigid/npt/small") != 0)
+        error->all(FLERR,"Illegal fix rigid/small command");
+      t_chain = force->numeric(FLERR,arg[iarg+1]);
+      t_iter = force->numeric(FLERR,arg[iarg+2]);
+      t_order = force->numeric(FLERR,arg[iarg+3]);
+      iarg += 4;
+
+    } else if (strcmp(arg[iarg],"pchain") == 0) {
+      if (iarg+2 > narg) error->all(FLERR,"Illegal fix rigid/small command");
+      if (strcmp(style,"rigid/npt/small") != 0 && 
+          strcmp(style,"rigid/nph/small") != 0)
+        error->all(FLERR,"Illegal fix rigid/small command");
+      p_chain = force->numeric(FLERR,arg[iarg+1]);
+      iarg += 2;
+
+
     } else error->all(FLERR,"Illegal fix rigid/small command");
   }
 
   // error check and further setup for Molecule template
 
-  if (onemol) {
-    if (onemol->xflag == 0)
-      error->all(FLERR,"Fix rigid/small molecule must have coordinates");
-    if (onemol->typeflag == 0)
-      error->all(FLERR,"Fix rigid/small molecule must have atom types");
+  if (onemols) {
+    for (int i = 0; i < nmol; i++) {
+      if (onemols[i]->xflag == 0)
+        error->all(FLERR,"Fix rigid/small molecule must have coordinates");
+      if (onemols[i]->typeflag == 0)
+        error->all(FLERR,"Fix rigid/small molecule must have atom types");
 
-    // fix rigid/small uses center, masstotal, COM, inertia of molecule
-
-    onemol->compute_center();
-    onemol->compute_mass();
-    onemol->compute_com();
-    onemol->compute_inertia();
+      // fix rigid/small uses center, masstotal, COM, inertia of molecule
+      
+      onemols[i]->compute_center();
+      onemols[i]->compute_mass();
+      onemols[i]->compute_com();
+      onemols[i]->compute_inertia();
+    }
   }
+
+  // set pstat_flag
+
+  pstat_flag = 0;
+  for (int i = 0; i < 3; i++) 
+    if (p_flag[i]) pstat_flag = 1;
+
+  if (pcouple == XYZ || (domain->dimension == 2 && pcouple == XY)) pstyle = ISO;
+  else pstyle = ANISO;
 
   // create rigid bodies based on molecule ID
   // sets bodytag for owned atoms
@@ -1405,7 +1549,10 @@ void FixRigidSmall::create_bodies()
 
   MPI_Allreduce(&rsqfar,&maxextent,1,MPI_DOUBLE,MPI_MAX,world);
   maxextent = sqrt(maxextent);
-  if (onemol) maxextent = MAX(maxextent,onemol->maxextent);
+  if (onemols) {
+    for (int i = 0; i < nmol; i++)
+      maxextent = MAX(maxextent,onemols[i]->maxextent);
+  }
 
   // clean up
 
@@ -1572,8 +1719,17 @@ void FixRigidSmall::setup_bodies_static()
   }
 
   // extended = 1 if using molecule template with finite-size particles
+  // require all molecules in template to have consistent radiusflag
 
-  if (onemol && onemol->radiusflag) extended = 1;
+  if (onemols) {
+    int radiusflag = onemols[0]->radiusflag;
+    for (i = 1; i < nmol; i++) {
+      if (onemols[i]->radiusflag != radiusflag)
+        error->all(FLERR,"Inconsistent use of finite-size particles "
+                   "by molecule template molecules");
+    }
+    if (radiusflag) extended = 1;
+  }
 
   // grow extended arrays and set extended flags for each particle
   // orientflag = 4 if any particle stores ellipsoid or tri orientation
@@ -2435,7 +2591,7 @@ void FixRigidSmall::set_arrays(int i)
           relative to template in Molecule class
 ------------------------------------------------------------------------- */
 
-void FixRigidSmall::set_molecule(int nlocalprev, tagint tagprev, 
+void FixRigidSmall::set_molecule(int nlocalprev, tagint tagprev, int imol,
                                  double *xgeom, double *vcm, double *quat)
 {
   int m;
@@ -2448,16 +2604,16 @@ void FixRigidSmall::set_molecule(int nlocalprev, tagint tagprev,
   tagint *tag = atom->tag;
 
   for (int i = nlocalprev; i < nlocal; i++) {
-    bodytag[i] = tagprev + onemol->comatom;
-    if (tag[i]-tagprev == onemol->comatom) bodyown[i] = nlocal_body;
+    bodytag[i] = tagprev + onemols[imol]->comatom;
+    if (tag[i]-tagprev == onemols[imol]->comatom) bodyown[i] = nlocal_body;
 
     m = tag[i] - tagprev-1;
-    displace[i][0] = onemol->dxbody[m][0];
-    displace[i][1] = onemol->dxbody[m][1];
-    displace[i][2] = onemol->dxbody[m][2];
+    displace[i][0] = onemols[imol]->dxbody[m][0];
+    displace[i][1] = onemols[imol]->dxbody[m][1];
+    displace[i][2] = onemols[imol]->dxbody[m][2];
 
     eflags[i] = 0;
-    if (onemol->radiusflag) {
+    if (onemols[imol]->radiusflag) {
       eflags[i] |= SPHERE;
       eflags[i] |= OMEGA;
       eflags[i] |= TORQUE;
@@ -2466,27 +2622,27 @@ void FixRigidSmall::set_molecule(int nlocalprev, tagint tagprev,
     if (bodyown[i] >= 0) {
       if (nlocal_body == nmax_body) grow_body();
       Body *b = &body[nlocal_body];
-      b->mass = onemol->masstotal;
+      b->mass = onemols[imol]->masstotal;
 
-      // new COM = Q (onemol->xcm - onemol->center) + xgeom
+      // new COM = Q (onemols[imol]->xcm - onemols[imol]->center) + xgeom
       // Q = rotation matrix associated with quat
 
       MathExtra::quat_to_mat(quat,rotmat);
-      MathExtra::sub3(onemol->com,onemol->center,ctr2com);
+      MathExtra::sub3(onemols[imol]->com,onemols[imol]->center,ctr2com);
       MathExtra::matvec(rotmat,ctr2com,ctr2com_rotate);
       MathExtra::add3(ctr2com_rotate,xgeom,b->xcm);
 
       b->vcm[0] = vcm[0];
       b->vcm[1] = vcm[1];
       b->vcm[2] = vcm[2];
-      b->inertia[0] = onemol->inertia[0];
-      b->inertia[1] = onemol->inertia[1];
-      b->inertia[2] = onemol->inertia[2];
+      b->inertia[0] = onemols[imol]->inertia[0];
+      b->inertia[1] = onemols[imol]->inertia[1];
+      b->inertia[2] = onemols[imol]->inertia[2];
 
       // final quat is product of insertion quat and original quat
       // true even if insertion rotation was not around COM
 
-      MathExtra::quatquat(quat,onemol->quat,b->quat);
+      MathExtra::quatquat(quat,onemols[imol]->quat,b->quat);
       MathExtra::q_to_exyz(b->quat,b->ex_space,b->ey_space,b->ez_space);
 
       b->angmom[0] = b->angmom[1] = b->angmom[2] = 0.0;
@@ -2607,7 +2763,7 @@ int FixRigidSmall::pack_comm(int n, int *list, double *buf,
                              int pbc_flag, int *pbc)
 {
   int i,j;
-  double *xcm,*vcm,*quat,*omega,*ex_space,*ey_space,*ez_space;
+  double *xcm,*vcm,*quat,*omega,*ex_space,*ey_space,*ez_space,*conjqm;
 
   int m = 0;
 
@@ -2644,6 +2800,11 @@ int FixRigidSmall::pack_comm(int n, int *list, double *buf,
       buf[m++] = ez_space[0];
       buf[m++] = ez_space[1];
       buf[m++] = ez_space[2];
+      conjqm = body[bodyown[j]].conjqm;
+      buf[m++] = conjqm[0];
+      buf[m++] = conjqm[1];
+      buf[m++] = conjqm[2];
+      buf[m++] = conjqm[3];
     }
 
   } else if (commflag == FINAL) {
@@ -2658,6 +2819,11 @@ int FixRigidSmall::pack_comm(int n, int *list, double *buf,
       buf[m++] = omega[0];
       buf[m++] = omega[1];
       buf[m++] = omega[2];
+      conjqm = body[bodyown[j]].conjqm;
+      buf[m++] = conjqm[0];
+      buf[m++] = conjqm[1];
+      buf[m++] = conjqm[2];
+      buf[m++] = conjqm[3];
     }
 
   } else if (commflag == FULL_BODY) {
@@ -2684,7 +2850,7 @@ int FixRigidSmall::pack_comm(int n, int *list, double *buf,
 void FixRigidSmall::unpack_comm(int n, int first, double *buf)
 {
   int i,j,last;
-  double *xcm,*vcm,*quat,*omega,*ex_space,*ey_space,*ez_space;
+  double *xcm,*vcm,*quat,*omega,*ex_space,*ey_space,*ez_space,*conjqm;
 
   int m = 0;
   last = first + n;
@@ -2721,6 +2887,11 @@ void FixRigidSmall::unpack_comm(int n, int first, double *buf)
       ez_space[0] = buf[m++];
       ez_space[1] = buf[m++];
       ez_space[2] = buf[m++];
+      conjqm = body[bodyown[i]].conjqm;
+      conjqm[0] = buf[m++];
+      conjqm[1] = buf[m++];
+      conjqm[2] = buf[m++];
+      conjqm[3] = buf[m++];
     }
 
   } else if (commflag == FINAL) {
@@ -2734,6 +2905,11 @@ void FixRigidSmall::unpack_comm(int n, int first, double *buf)
       omega[0] = buf[m++];
       omega[1] = buf[m++];
       omega[2] = buf[m++];
+      conjqm = body[bodyown[i]].conjqm;
+      conjqm[0] = buf[m++];
+      conjqm[1] = buf[m++];
+      conjqm[2] = buf[m++];
+      conjqm[3] = buf[m++];
     }
 
   } else if (commflag == FULL_BODY) {
@@ -3015,7 +3191,7 @@ void *FixRigidSmall::extract(const char *str, int &dim)
 
   if (strcmp(str,"onemol") == 0) {
     dim = 0;
-    return onemol;
+    return onemols;
   }
 
   // return vector of rigid body masses, for owned+ghost bodies

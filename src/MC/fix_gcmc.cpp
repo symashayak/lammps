@@ -237,6 +237,17 @@ FixGCMC::~FixGCMC()
   if (regionflag) delete [] idregion;
   delete random_equal;
   delete random_unequal;
+
+  // remove rotation group this fix defined
+
+  if (rotation_group) {
+    char **group_arg = new char*[2];
+    group_arg[0] = group->names[rotation_group];
+    group_arg[1] = (char *) "delete";
+    group->assign(2,group_arg);
+    delete [] group_arg;
+  }
+
   memory->destroy(local_gas_list);
   memory->destroy(atom_coord);
   memory->destroy(model_atom_buf);
@@ -267,7 +278,6 @@ void FixGCMC::init()
 
   if (molflag == 0 && atom->molecule_flag) {
     tagint *molecule = atom->molecule;
-    int *mask = atom->mask;
     int flag = 0;
     for (int i = 0; i < atom->nlocal; i++)
       if (type[i] == ngcmc_type)
@@ -315,8 +325,8 @@ void FixGCMC::init()
   if (molflag) {
     char **group_arg = new char*[3];
     // create unique group name for atoms to be rotated
-    int len = strlen(id) + 24;
-    group_arg[0] = new char[60];
+    int len = strlen(id) + 30;
+    group_arg[0] = new char[len];
     sprintf(group_arg[0],"FixGCMC:rotation_gas_atoms:%s",id);
     group_arg[1] = (char *) "molecule";
     char digits[12];
@@ -767,10 +777,6 @@ void FixGCMC::attempt_molecule_insertion()
 {
   ninsertion_attempts += 1.0;
 
-  double xprd = domain->xprd;
-  double yprd = domain->yprd;
-  double zprd = domain->zprd;
-
   double com_coord[3];
   if (regionflag) {
     int region_attempt = 0;
@@ -846,7 +852,6 @@ void FixGCMC::attempt_molecule_insertion()
     double **x = atom->x;
     double **v = atom->v;
     imageint *image = atom->image;
-    tagint *molecule = atom->molecule;
     tagint *tag = atom->tag;
     for (int i = 0; i < natoms_per_molecule; i++) {
       k += atom->avec->unpack_exchange(&model_atom_buf[k]);
