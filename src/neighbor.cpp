@@ -756,9 +756,11 @@ void Neighbor::init()
 #endif
   }
 
+  // mark all current requests as processed
   // delete old requests
   // copy current requests and style to old for next run
 
+  for (i = 0; i < nrequest; i++) requests[i]->unprocessed = 0;
   for (i = 0; i < old_nrequest; i++) delete old_requests[i];
   memory->sfree(old_requests);
   old_nrequest = nrequest;

@@ -24,6 +24,7 @@ NeighRequest::NeighRequest(LAMMPS *lmp) : Pointers(lmp)
   // default ID = 0
 
   id = 0;
+  unprocessed = 1;
 
   // default is pair request
 
@@ -34,6 +35,7 @@ NeighRequest::NeighRequest(LAMMPS *lmp) : Pointers(lmp)
 
   half = 1;
   full = 0;
+  full_cluster = 0;
   gran = granhistory = 0;
   respainner = respamiddle = respaouter = 0;
   half_from_full = 0;
@@ -95,6 +97,10 @@ void NeighRequest::archive()
 int NeighRequest::identical(NeighRequest *other)
 {
   int same = 1;
+
+  // set same = 0 if old list was never processed
+
+  if (other->unprocessed) same = 0;
 
   if (requestor != other->requestor) same = 0;
   if (id != other->id) same = 0;

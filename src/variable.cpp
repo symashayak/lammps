@@ -139,6 +139,8 @@ void Variable::set(int narg, char **arg)
 {
   if (narg < 2) error->all(FLERR,"Illegal variable command");
 
+  int replaceflag = 0;
+
   // DELETE
   // doesn't matter if variable no longer exists
 
@@ -262,24 +264,28 @@ void Variable::set(int narg, char **arg)
                    "All universe/uloop variables must have same # of values");
 
   // STRING
-  // remove pre-existing var if also style STRING (allows it to be reset)
+  // replace pre-existing var if also style STRING (allows it to be reset)
   // num = 1, which = 1st value
   // data = 1 value, string to eval
 
   } else if (strcmp(arg[1],"string") == 0) {
     if (narg != 3) error->all(FLERR,"Illegal variable command");
-    if (find(arg[0]) >= 0) {
-      if (style[find(arg[0])] != STRING)
+    int ivar = find(arg[0]);
+    if (ivar >= 0) {
+      if (style[ivar] != STRING)
         error->all(FLERR,"Cannot redefine variable as a different style");
-      remove(find(arg[0]));
+      delete [] data[ivar][0];
+      copy(1,&arg[2],data[ivar]);
+      replaceflag = 1;
+    } else {
+      if (nvar == maxvar) grow();
+      style[nvar] = STRING;
+      num[nvar] = 1;
+      which[nvar] = 0;
+      pad[nvar] = 0;
+      data[nvar] = new char*[num[nvar]];
+      copy(1,&arg[2],data[nvar]);
     }
-    if (nvar == maxvar) grow();
-    style[nvar] = STRING;
-    num[nvar] = 1;
-    which[nvar] = 0;
-    pad[nvar] = 0;
-    data[nvar] = new char*[num[nvar]];
-    copy(1,&arg[2],data[nvar]);
 
   // GETENV
   // remove pre-existing var if also style GETENV (allows it to be reset)
@@ -357,51 +363,62 @@ void Variable::set(int narg, char **arg)
     data[nvar][2] = NULL;
 
   // EQUAL
-  // remove pre-existing var if also style EQUAL (allows it to be reset)
+  // replace pre-existing var if also style EQUAL (allows it to be reset)
   // num = 2, which = 1st value
   // data = 2 values, 1st is string to eval, 2nd is filled on retrieval
 
   } else if (strcmp(arg[1],"equal") == 0) {
     if (narg != 3) error->all(FLERR,"Illegal variable command");
-    if (find(arg[0]) >= 0) {
-      if (style[find(arg[0])] != EQUAL)
+    int ivar = find(arg[0]);
+    if (ivar >= 0) {
+      if (style[ivar] != EQUAL)
         error->all(FLERR,"Cannot redefine variable as a different style");
-      remove(find(arg[0]));
+      delete [] data[ivar][0];
+      if (data[ivar][1]) delete [] data[ivar][1];
+      copy(1,&arg[2],data[ivar]);
+      data[ivar][1] = NULL;
+      replaceflag = 1;
+    } else {
+      if (nvar == maxvar) grow();
+      style[nvar] = EQUAL;
+      num[nvar] = 2;
+      which[nvar] = 0;
+      pad[nvar] = 0;
+      data[nvar] = new char*[num[nvar]];
+      copy(1,&arg[2],data[nvar]);
+      data[nvar][1] = NULL;
     }
-    if (nvar == maxvar) grow();
-    style[nvar] = EQUAL;
-    num[nvar] = 2;
-    which[nvar] = 0;
-    pad[nvar] = 0;
-    data[nvar] = new char*[num[nvar]];
-    copy(1,&arg[2],data[nvar]);
-    data[nvar][1] = NULL;
 
   // ATOM
-  // remove pre-existing var if also style ATOM (allows it to be reset)
+  // replace pre-existing var if also style ATOM (allows it to be reset)
   // num = 1, which = 1st value
   // data = 1 value, string to eval
 
   } else if (strcmp(arg[1],"atom") == 0) {
     if (narg != 3) error->all(FLERR,"Illegal variable command");
-    if (find(arg[0]) >= 0) {
-      if (style[find(arg[0])] != ATOM)
+    int ivar = find(arg[0]);
+    if (ivar >= 0) {
+      if (style[ivar] != ATOM)
         error->all(FLERR,"Cannot redefine variable as a different style");
-      remove(find(arg[0]));
+      delete [] data[ivar][0];
+      copy(1,&arg[2],data[ivar]);
+      replaceflag = 1;
+    } else {
+      if (nvar == maxvar) grow();
+      style[nvar] = ATOM;
+      num[nvar] = 1;
+      which[nvar] = 0;
+      pad[nvar] = 0;
+      data[nvar] = new char*[num[nvar]];
+      copy(1,&arg[2],data[nvar]);
     }
-    if (nvar == maxvar) grow();
-    style[nvar] = ATOM;
-    num[nvar] = 1;
-    which[nvar] = 0;
-    pad[nvar] = 0;
-    data[nvar] = new char*[num[nvar]];
-    copy(1,&arg[2],data[nvar]);
 
   } else error->all(FLERR,"Illegal variable command");
 
-  // set name of variable
-  // must come at end, since STRING/EQUAL/ATOM reset may have removed name
+  // set name of variable, if not replacing (STRING/EQUAL/ATOM)
   // name must be all alphanumeric chars or underscores
+
+  if (replaceflag) return;
 
   int n = strlen(arg[0]) + 1;
   names[nvar] = new char[n];
@@ -3482,7 +3499,7 @@ int Variable::special_function(char *word, char *contents, Tree **tree,
    id = positive global ID of atom, converted to local index
    push result onto tree or arg stack
    customize by adding an atom vector:
-     id,mass,type,mol,x,y,z,vx,vy,vz,fx,fy,fz
+     id,mass,type,mol,x,y,z,vx,vy,vz,fx,fy,fz,q
 ------------------------------------------------------------------------- */
 
 void Variable::peratom2global(int flag, char *word,
@@ -3520,7 +3537,11 @@ void Variable::peratom2global(int flag, char *word,
       else if (strcmp(word,"fx") == 0) mine = atom->f[index][0];
       else if (strcmp(word,"fy") == 0) mine = atom->f[index][1];
       else if (strcmp(word,"fz") == 0) mine = atom->f[index][2];
-
+      else if (strcmp(word,"q") == 0) {
+        if (!atom->q_flag) 
+          error->one(FLERR,"Variable uses atom property that isn't allocated");
+        mine = atom->q[index];
+      }
       else error->one(FLERR,"Invalid atom vector in variable formula");
 
     } else mine = vector[index*nstride];
@@ -3543,7 +3564,7 @@ void Variable::peratom2global(int flag, char *word,
    check if word matches an atom vector
    return 1 if yes, else 0
    customize by adding an atom vector:
-     id,mass,type,mol,x,y,z,vx,vy,vz,fx,fy,fz
+     id,mass,type,mol,x,y,z,vx,vy,vz,fx,fy,fz,q
 ------------------------------------------------------------------------- */
 
 int Variable::is_atom_vector(char *word)
@@ -3561,6 +3582,7 @@ int Variable::is_atom_vector(char *word)
   if (strcmp(word,"fx") == 0) return 1;
   if (strcmp(word,"fy") == 0) return 1;
   if (strcmp(word,"fz") == 0) return 1;
+  if (strcmp(word,"q") == 0) return 1;
   return 0;
 }
 
@@ -3569,7 +3591,7 @@ int Variable::is_atom_vector(char *word)
    push result onto tree
    word = atom vector
    customize by adding an atom vector:
-     id,mass,type,mol,x,y,z,vx,vy,vz,fx,fy,fz
+     id,mass,type,mol,x,y,z,vx,vy,vz,fx,fy,fz,q
 ------------------------------------------------------------------------- */
 
 void Variable::atom_vector(char *word, Tree **tree,
@@ -3631,6 +3653,11 @@ void Variable::atom_vector(char *word, Tree **tree,
   else if (strcmp(word,"fx") == 0) newtree->array = &atom->f[0][0];
   else if (strcmp(word,"fy") == 0) newtree->array = &atom->f[0][1];
   else if (strcmp(word,"fz") == 0) newtree->array = &atom->f[0][2];
+
+  else if (strcmp(word,"q") == 0) {
+    newtree->nstride = 1;
+    newtree->array = atom->q;
+  }
 }
 
 /* ----------------------------------------------------------------------
@@ -3654,41 +3681,6 @@ double Variable::constant(char *word)
 {
   if (strcmp(word,"PI") == 0) return MY_PI;
   return 0.0;
-}
-
-/* ----------------------------------------------------------------------
-   read a floating point value from a string
-   generate an error if not a legitimate floating point value
-------------------------------------------------------------------------- */
-
-double Variable::numeric(char *str)
-{
-  int n = strlen(str);
-  for (int i = 0; i < n; i++) {
-    if (isdigit(str[i])) continue;
-    if (str[i] == '-' || str[i] == '+' || str[i] == '.') continue;
-    if (str[i] == 'e' || str[i] == 'E') continue;
-    error->all(FLERR,
-               "Expected floating point parameter in variable definition");
-  }
-
-  return atof(str);
-}
-
-/* ----------------------------------------------------------------------
-   read an integer value from a string
-   generate an error if not a legitimate integer value
-------------------------------------------------------------------------- */
-
-int Variable::inumeric(char *str)
-{
-  int n = strlen(str);
-  for (int i = 0; i < n; i++) {
-    if (isdigit(str[i]) || str[i] == '-' || str[i] == '+') continue;
-    error->all(FLERR,"Expected integer parameter in variable definition");
-  }
-
-  return atoi(str);
 }
 
 /* ----------------------------------------------------------------------

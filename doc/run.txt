@@ -97,10 +97,11 @@ must be done.
 
 IMPORTANT NOTE: If your input script changes settings between 2 runs
 (e.g. adds a "fix"_fix.html or "dump"_dump.html or
-"compute"_compute.html or changes a "neighbor"_neigh_modify.html list
-parameter), then the initial setup must be performed.  LAMMPS does not
-check for this, but it would be an error to use the {pre no} option in
-this case.
+"compute"_compute.html, changes a "neighbor"_neigh_modify.html list
+parameter, writes a restart file which can migrate atoms between
+processors), then the initial setup must be performed.  LAMMPS has no
+easy way to check for this, but it would be an error to use the {pre
+no} option in this case.
 
 If {post} is specified as "no", the full timing summary is skipped;
 only a one-line summary timing is printed.
@@ -136,17 +137,17 @@ invoked.  If only a single command is specified as NULL, then no
 command is invoked.  Thus these lines:
 
 variable q equal x\[100\]
-run 6000 every 2000 "print Coord = $q" :pre
+run 6000 every 2000 "print 'Coord = $q'" :pre
 
 are the equivalent of:
 
 variable q equal x\[100\]
 run 2000
-print Coord = $q
+print "Coord = $q"
 run 2000
-print Coord = $q
+print "Coord = $q"
 run 2000
-print Coord = $q :pre
+print "Coord = $q" :pre
 
 which does 3 runs of 2000 steps and prints the x-coordinate of a
 particular atom between runs.  Note that the variable "$q" will
