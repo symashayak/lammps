@@ -151,7 +151,7 @@ void Molecule::compute_com()
     com[0] = com[1] = com[2] = 0.0;
     for (int i = 0; i < natoms; i++) {
       if (rmassflag) onemass = rmass[i];
-      else onemass = atom->type[type[i]];
+      else onemass = atom->mass[type[i]];
       com[0] += x[i][0]*onemass;
       com[1] += x[i][1]*onemass;
       com[2] += x[i][2]*onemass;
@@ -447,6 +447,8 @@ void Molecule::read(int flag)
       error->all(FLERR,"Molecule file needs both Special Bond sections");
     if (specialflag && !bondflag) 
       error->all(FLERR,"Molecule file has special flags but no bonds");
+    if (!specialflag && bondflag) 
+      error->all(FLERR,"Molecule file has bonds but no special flags");
 
     if ((shakeflagflag || shakeatomflag || shaketypeflag) && !shakeflag)
       error->all(FLERR,"Molecule file shake info is incomplete");
@@ -716,21 +718,21 @@ void Molecule::dihedrals(int flag, char *line)
 	dihedral_atom1[m][num_dihedral[m]] = atom1;
 	dihedral_atom2[m][num_dihedral[m]] = atom2;
 	dihedral_atom3[m][num_dihedral[m]] = atom3;
-        dihedral_atom4[m][num_dihedral[m]] = atom4;
+	dihedral_atom4[m][num_dihedral[m]] = atom4;
 	num_dihedral[m]++;
 	m = atom3-1;
 	dihedral_type[m][num_dihedral[m]] = itype;
 	dihedral_atom1[m][num_dihedral[m]] = atom1;
 	dihedral_atom2[m][num_dihedral[m]] = atom2;
 	dihedral_atom3[m][num_dihedral[m]] = atom3;
-        dihedral_atom4[m][num_dihedral[m]] = atom4;
+	dihedral_atom4[m][num_dihedral[m]] = atom4;
 	num_dihedral[m]++;
 	m = atom4-1;
 	dihedral_type[m][num_dihedral[m]] = itype;
 	dihedral_atom1[m][num_dihedral[m]] = atom1;
 	dihedral_atom2[m][num_dihedral[m]] = atom2;
 	dihedral_atom3[m][num_dihedral[m]] = atom3;
-        dihedral_atom4[m][num_dihedral[m]] = atom4;
+	dihedral_atom4[m][num_dihedral[m]] = atom4;
 	num_dihedral[m]++;
       }
     } else {
@@ -801,21 +803,21 @@ void Molecule::impropers(int flag, char *line)
 	improper_atom1[m][num_improper[m]] = atom1;
 	improper_atom2[m][num_improper[m]] = atom2;
 	improper_atom3[m][num_improper[m]] = atom3;
-        improper_atom4[m][num_improper[m]] = atom4;
+	improper_atom4[m][num_improper[m]] = atom4;
 	num_improper[m]++;
 	m = atom3-1;
 	improper_type[m][num_improper[m]] = itype;
 	improper_atom1[m][num_improper[m]] = atom1;
 	improper_atom2[m][num_improper[m]] = atom2;
 	improper_atom3[m][num_improper[m]] = atom3;
-        improper_atom4[m][num_improper[m]] = atom4;
+	improper_atom4[m][num_improper[m]] = atom4;
 	num_improper[m]++;
 	m = atom4-1;
 	improper_type[m][num_improper[m]] = itype;
 	improper_atom1[m][num_improper[m]] = atom1;
 	improper_atom2[m][num_improper[m]] = atom2;
 	improper_atom3[m][num_improper[m]] = atom3;
-        improper_atom4[m][num_improper[m]] = atom4;
+	improper_atom4[m][num_improper[m]] = atom4;
 	num_improper[m]++;
       }
     } else {
