@@ -20,6 +20,8 @@
 #include "comm.h"
 #include "memory.h"
 #include "error.h"
+#include "accelerator_kokkos.h"
+#include "atom_masks.h"
 
 using namespace LAMMPS_NS;
 
@@ -572,9 +574,12 @@ void Special::combine()
       fprintf(logfile,"  %d = max # of special neighbors\n",atom->maxspecial);
   }
 
-  memory->destroy(atom->special);
-
-  memory->create(atom->special,atom->nmax,atom->maxspecial,"atom:special");
+  if(lmp->kokkos != NULL) 
+    ((AtomKokkos*) atom )->grow(SPECIAL_MASK);
+  else {
+    memory->destroy(atom->special);
+    memory->create(atom->special,atom->nmax,atom->maxspecial,"atom:special");
+  }
   atom->avec->grow_reset();
   tagint **special = atom->special;
 
