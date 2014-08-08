@@ -37,31 +37,43 @@ AtomKokkos::AtomKokkos(LAMMPS *lmp) : Atom(lmp)
 
 AtomKokkos::~AtomKokkos()
 {
-  k_tag = DAT::tdual_tagint_1d();
-  k_mask = DAT::tdual_int_1d();
-  k_type = DAT::tdual_int_1d();
-  k_image = DAT::tdual_imageint_1d();
-  k_molecule = DAT::tdual_tagint_1d();
+  memory->destroy_kokkos(k_tag, tag);
+  memory->destroy_kokkos(k_mask, mask);
+  memory->destroy_kokkos(k_type, type);
+  memory->destroy_kokkos(k_image, image);
+  memory->destroy_kokkos(k_molecule, molecule);
 
-  k_x = DAT::tdual_x_array();
-  k_v = DAT::tdual_v_array();
-  k_f = DAT::tdual_f_array();
+  memory->destroy_kokkos(k_x, x);
+  memory->destroy_kokkos(k_v, v);
+  memory->destroy_kokkos(k_f, f);
 
-  k_mass = DAT::tdual_float_1d();
+  memory->destroy_kokkos(k_mass, mass);
 
-  tag = NULL;
-  mask = NULL;
-  type = NULL;
-  image = NULL;
-  molecule = NULL;
-  mass = NULL;
+  memory->destroy_kokkos(k_q,q);
 
-  memory->sfree(x);
-  memory->sfree(v);
-  memory->sfree(f);
-  x = NULL;
-  v = NULL;
-  f = NULL;
+  memory->destroy_kokkos(k_nspecial, nspecial);
+  memory->destroy_kokkos(k_special, special);
+  memory->destroy_kokkos(k_num_bond, num_bond);
+  memory->destroy_kokkos(k_bond_type, bond_type);
+  memory->destroy_kokkos(k_bond_atom, bond_atom);
+  memory->destroy_kokkos(k_num_angle, num_angle);
+  memory->destroy_kokkos(k_angle_type, angle_type);
+  memory->destroy_kokkos(k_angle_atom1, angle_atom1);
+  memory->destroy_kokkos(k_angle_atom2, angle_atom2);
+  memory->destroy_kokkos(k_angle_atom3, angle_atom3);
+  memory->destroy_kokkos(k_num_dihedral, num_dihedral);
+  memory->destroy_kokkos(k_dihedral_type, dihedral_type);
+  memory->destroy_kokkos(k_dihedral_atom1, dihedral_atom1);
+  memory->destroy_kokkos(k_dihedral_atom2, dihedral_atom2);
+  memory->destroy_kokkos(k_dihedral_atom3, dihedral_atom3);
+  memory->destroy_kokkos(k_dihedral_atom4, dihedral_atom4);
+  memory->destroy_kokkos(k_num_improper, num_improper);
+  memory->destroy_kokkos(k_improper_type, improper_type);
+  memory->destroy_kokkos(k_improper_atom1, improper_atom1);
+  memory->destroy_kokkos(k_improper_atom2, improper_atom2);
+  memory->destroy_kokkos(k_improper_atom3, improper_atom3);
+  memory->destroy_kokkos(k_improper_atom4, improper_atom4);
+
 }
 
 /* ---------------------------------------------------------------------- */
@@ -187,4 +199,20 @@ void AtomKokkos::sort()
   //int flagall;
   //MPI_Allreduce(&flag,&flagall,1,MPI_INT,MPI_SUM,world);
   //if (flagall) error->all(FLERR,"Atom sort did not operate correctly");
+}
+
+/* ----------------------------------------------------------------------
+   reallocate memory to the pointer selected by the mask
+------------------------------------------------------------------------- */
+void AtomKokkos::grow(unsigned int mask){
+
+  if (mask && SPECIAL_MASK){
+    memory->destroy_kokkos(k_special, special);
+    sync(Device, mask);
+    modified(Device, mask);
+    memory->grow_kokkos(k_special,special,nmax,maxspecial,"atom:special");
+    avec->grow_reset();
+    sync(Host, mask);
+  }
+
 }
