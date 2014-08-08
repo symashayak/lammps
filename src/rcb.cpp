@@ -22,10 +22,7 @@ using namespace LAMMPS_NS;
 
 #define MYHUGE 1.0e30
 #define TINY 1.0e-6
-
-// set this to bigger number after debugging
-
-#define DELTA 10
+#define DELTA 16384
 
 // prototypes for non-class functions
 
@@ -102,7 +99,6 @@ RCB::~RCB()
    all proc particles will be inside or on surface of 3-d box
      defined by final lo/hi
    // NOTE: worry about re-use of data structs for fix balance?
-   // NOTE: could get rid of wt all together, will it be used?
 ------------------------------------------------------------------------- */
 
 void RCB::compute(int dimension, int n, double **x, double *wt,
@@ -157,6 +153,9 @@ void RCB::compute(int dimension, int n, double **x, double *wt,
   hi[0] = bboxhi[0];
   hi[1] = bboxhi[1];
   hi[2] = bboxhi[2];
+
+  cut = 0.0;
+  cutdim = -1;
 
   // initialize counters
 
@@ -241,7 +240,7 @@ void RCB::compute(int dimension, int n, double **x, double *wt,
       if (dim == 0 && hi[2]-lo[2] > hi[0]-lo[0]) dim = 2;
       if (dim == 1 && hi[2]-lo[2] > hi[1]-lo[1]) dim = 2;
     }
-    
+
     // create active list and mark array for dots
     // initialize active list to all dots
 
