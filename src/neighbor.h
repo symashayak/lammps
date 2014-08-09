@@ -186,8 +186,14 @@ class Neighbor : protected Pointers {
   virtual void init_list_flags1_kokkos(int) {}
   virtual void init_list_flags2_kokkos(int) {}
   virtual void init_list_grow_kokkos(int) {}
+  virtual void init_ex_type_kokkos(int) {}
+  virtual void init_ex_bit_kokkos() {}
+  virtual void init_ex_mol_bit_kokkos() {}
   virtual void build_kokkos(int) {}
   virtual void setup_bins_kokkos(int) {}
+  virtual void modify_ex_type_grow_kokkos() {}
+  virtual void modify_ex_group_grow_kokkos() {}
+  virtual void modify_mol_group_grow_kokkos() {}
 
   // pairwise build functions
 

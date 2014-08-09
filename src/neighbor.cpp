@@ -393,9 +393,11 @@ void Neighbor::init()
   else exclude = 1;
 
   if (nex_type) {
-    memory->destroy(ex_type);
-    memory->create(ex_type,n+1,n+1,"neigh:ex_type");
-
+    if(lmp->kokkos) init_ex_type_kokkos(n);
+    else{
+      memory->destroy(ex_type);
+      memory->create(ex_type,n+1,n+1,"neigh:ex_type");
+    }
     for (i = 1; i <= n; i++)
       for (j = 1; j <= n; j++)
         ex_type[i][j] = 0;
@@ -410,10 +412,13 @@ void Neighbor::init()
   }
 
   if (nex_group) {
-    delete [] ex1_bit;
-    delete [] ex2_bit;
-    ex1_bit = new int[nex_group];
-    ex2_bit = new int[nex_group];
+    if(lmp->kokkos) init_ex_bit_kokkos();
+    else{
+      delete [] ex1_bit;
+      delete [] ex2_bit;
+      ex1_bit = new int[nex_group];
+      ex2_bit = new int[nex_group];
+    }
 
     for (i = 0; i < nex_group; i++) {
       ex1_bit[i] = group->bitmask[ex1_group[i]];
@@ -422,9 +427,11 @@ void Neighbor::init()
   }
 
   if (nex_mol) {
-    delete [] ex_mol_bit;
-    ex_mol_bit = new int[nex_mol];
-
+    if(lmp->kokkos) init_ex_mol_bit_kokkos();
+    else{
+      delete [] ex_mol_bit;
+      ex_mol_bit = new int[nex_mol];
+    }
     for (i = 0; i < nex_mol; i++)
       ex_mol_bit[i] = group->bitmask[ex_mol_group[i]];
   }
@@ -1814,8 +1821,11 @@ void Neighbor::modify_params(int narg, char **arg)
         if (iarg+4 > narg) error->all(FLERR,"Illegal neigh_modify command");
         if (nex_type == maxex_type) {
           maxex_type += EXDELTA;
-          memory->grow(ex1_type,maxex_type,"neigh:ex1_type");
-          memory->grow(ex2_type,maxex_type,"neigh:ex2_type");
+          if(lmp->kokkos) modify_ex_type_grow_kokkos();
+          else{
+            memory->grow(ex1_type,maxex_type,"neigh:ex1_type");
+            memory->grow(ex2_type,maxex_type,"neigh:ex2_type");
+          }
         }
         ex1_type[nex_type] = force->inumeric(FLERR,arg[iarg+2]);
         ex2_type[nex_type] = force->inumeric(FLERR,arg[iarg+3]);
@@ -1826,8 +1836,11 @@ void Neighbor::modify_params(int narg, char **arg)
         if (iarg+4 > narg) error->all(FLERR,"Illegal neigh_modify command");
         if (nex_group == maxex_group) {
           maxex_group += EXDELTA;
-          memory->grow(ex1_group,maxex_group,"neigh:ex1_group");
-          memory->grow(ex2_group,maxex_group,"neigh:ex2_group");
+          if(lmp->kokkos) modify_ex_group_grow_kokkos();
+          else{
+            memory->grow(ex1_group,maxex_group,"neigh:ex1_group");
+            memory->grow(ex2_group,maxex_group,"neigh:ex2_group");
+          }
         }
         ex1_group[nex_group] = group->find(arg[iarg+2]);
         ex2_group[nex_group] = group->find(arg[iarg+3]);
@@ -1843,7 +1856,8 @@ void Neighbor::modify_params(int narg, char **arg)
                      "requires atom attribute molecule");
         if (nex_mol == maxex_mol) {
           maxex_mol += EXDELTA;
-          memory->grow(ex_mol_group,maxex_mol,"neigh:ex_mol_group");
+          if(lmp->kokkos) modify_mol_group_grow_kokkos();
+          else memory->grow(ex_mol_group,maxex_mol,"neigh:ex_mol_group");
         }
         ex_mol_group[nex_mol] = group->find(arg[iarg+2]);
         if (ex_mol_group[nex_mol] == -1)
