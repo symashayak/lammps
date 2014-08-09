@@ -25,6 +25,18 @@
 
 namespace LAMMPS_NS {
 
+struct CoulTag {};
+
+template<int FLAG>
+struct DoCoul {
+  typedef int type;
+};
+
+template<>
+struct DoCoul<1> {
+  typedef CoulTag type;
+};
+
 template <class PairStyle, int NEIGHFLAG, bool STACKPARAMS, class Specialisation = void>
 struct PairComputeFunctor  {
   typedef typename PairStyle::device_type device_type ;
@@ -45,7 +57,7 @@ struct PairComputeFunctor  {
   template<int EVFLAG, int NEWTON_PAIR>
   KOKKOS_FUNCTION
   EV_FLOAT compute_item(const int& ii,
-                        const NeighListKokkos<device_type> &list) const {
+                        const NeighListKokkos<device_type> &list, const int&) const {
     EV_FLOAT ev;
     const int i = list.d_ilist[ii];
     const X_FLOAT xtmp = c.x(i,0);
@@ -93,9 +105,85 @@ struct PairComputeFunctor  {
           if (c.eflag) {
             ev.evdwl += (((NEIGHFLAG==HALF || NEIGHFLAG==HALFTHREAD)&&(NEWTON_PAIR||(j<c.nlocal)))?1.0:0.5)*
               factor_lj * c.template compute_evdwl<STACKPARAMS,Specialisation>(rsq,i,j,itype,jtype);
-            if (c.COUL_FLAG)
-              ev.ecoul += (((NEIGHFLAG==HALF || NEIGHFLAG==HALFTHREAD)&&(NEWTON_PAIR||(j<c.nlocal)))?1.0:0.5)*
-                factor_lj * c.template compute_ecoul<STACKPARAMS,Specialisation>(rsq,i,j,itype,jtype);
+          }
+
+          if (c.vflag_either) ev_tally(ev,i,j,fpair,delx,dely,delz);
+        }
+      }
+
+    }
+    if (NEIGHFLAG == HALFTHREAD) {
+      Kokkos::atomic_fetch_add(&c.f(i,0),fxtmp);
+      Kokkos::atomic_fetch_add(&c.f(i,1),fytmp);
+      Kokkos::atomic_fetch_add(&c.f(i,2),fztmp);
+    } else {
+      c.f(i,0) += fxtmp;
+      c.f(i,1) += fytmp;
+      c.f(i,2) += fztmp;
+    }
+
+    return ev;
+  }
+
+  template<int EVFLAG, int NEWTON_PAIR>
+  KOKKOS_FUNCTION
+  EV_FLOAT compute_item(const int& ii,
+                        const NeighListKokkos<device_type> &list, const CoulTag& ) const {
+    EV_FLOAT ev;
+    const int i = list.d_ilist[ii];
+    const X_FLOAT xtmp = c.x(i,0);
+    const X_FLOAT ytmp = c.x(i,1);
+    const X_FLOAT ztmp = c.x(i,2);
+    const int itype = c.type(i);
+
+    const AtomNeighborsConst neighbors_i = list.get_neighbors_const(i);
+    const int jnum = list.d_numneigh[i];
+
+    F_FLOAT fxtmp = 0.0;
+    F_FLOAT fytmp = 0.0;
+    F_FLOAT fztmp = 0.0;
+
+    for (int jj = 0; jj < jnum; jj++) {
+      int j = neighbors_i(jj);
+      const F_FLOAT factor_lj = c.special_lj[sbmask(j)];
+      const F_FLOAT factor_coul = c.special_coul[sbmask(j)];
+      j &= NEIGHMASK;
+      const X_FLOAT delx = xtmp - c.x(j,0);
+      const X_FLOAT dely = ytmp - c.x(j,1);
+      const X_FLOAT delz = ztmp - c.x(j,2);
+      const int jtype = c.type(j);
+      const F_FLOAT rsq = delx*delx + dely*dely + delz*delz;
+
+      if(rsq < (STACKPARAMS?c.m_cutsq[itype][jtype]:c.d_cutsq(itype,jtype))) {
+
+        F_FLOAT fpair = F_FLOAT();
+
+        if(rsq < (STACKPARAMS?c.m_cut_ljsq[itype][jtype]:c.d_cut_ljsq(itype,jtype)))
+          fpair+=factor_lj*c.template compute_fpair<STACKPARAMS,Specialisation>(rsq,i,j,itype,jtype);
+        if(rsq < (STACKPARAMS?c.m_cut_coulsq[itype][jtype]:c.d_cut_coulsq(itype,jtype)))
+          fpair+=factor_coul*c.template compute_fcoul<STACKPARAMS,Specialisation>(rsq,i,j,itype,jtype);
+
+        fxtmp += delx*fpair;
+        fytmp += dely*fpair;
+        fztmp += delz*fpair;
+        if ((NEIGHFLAG==HALFTHREAD) && (NEWTON_PAIR || j < c.nlocal)) {
+          Kokkos::atomic_fetch_add(&c.f(j,0),-delx*fpair);
+          Kokkos::atomic_fetch_add(&c.f(j,1),-dely*fpair);
+          Kokkos::atomic_fetch_add(&c.f(j,2),-delz*fpair);
+        }
+
+        if ((NEIGHFLAG==HALF) && (NEWTON_PAIR || j < c.nlocal)) {
+          c.f(j,0) -= delx*fpair;
+          c.f(j,1) -= dely*fpair;
+          c.f(j,2) -= delz*fpair;
+        }
+
+        if (EVFLAG) {
+          if (c.eflag) {
+            ev.evdwl += (((NEIGHFLAG==HALF || NEIGHFLAG==HALFTHREAD)&&(NEWTON_PAIR||(j<c.nlocal)))?1.0:0.5)*
+              factor_lj * c.template compute_evdwl<STACKPARAMS,Specialisation>(rsq,i,j,itype,jtype);
+            ev.ecoul += (((NEIGHFLAG==HALF || NEIGHFLAG==HALFTHREAD)&&(NEWTON_PAIR||(j<c.nlocal)))?1.0:0.5)*
+              factor_coul * c.template compute_ecoul<STACKPARAMS,Specialisation>(rsq,i,j,itype,jtype);
           }
 
           if (c.vflag_either) ev_tally(ev,i,j,fpair,delx,dely,delz);
@@ -202,16 +290,16 @@ struct PairComputeFunctor  {
 
   KOKKOS_INLINE_FUNCTION
   void operator()(const int i) const {
-    if (c.newton_pair) compute_item<0,1>(i,list);
-    else compute_item<0,0>(i,list);
+    if (c.newton_pair) compute_item<0,1>(i,list,typename DoCoul<PairStyle::COUL_FLAG>::type());
+    else compute_item<0,0>(i,list,typename DoCoul<PairStyle::COUL_FLAG>::type());
   }
 
   KOKKOS_INLINE_FUNCTION
   void operator()(const int i, value_type &energy_virial) const {
     if (c.newton_pair)
-      energy_virial += compute_item<1,1>(i,list);
+      energy_virial += compute_item<1,1>(i,list,typename DoCoul<PairStyle::COUL_FLAG>::type());
     else
-      energy_virial += compute_item<1,0>(i,list);
+      energy_virial += compute_item<1,0>(i,list,typename DoCoul<PairStyle::COUL_FLAG>::type());
   }
 
   KOKKOS_INLINE_FUNCTION

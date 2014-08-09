@@ -101,11 +101,11 @@ void PairLJCutKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
   type = atomKK->k_type.view<DeviceType>();
   nlocal = atom->nlocal;
   nall = atom->nlocal + atom->nghost;
+  newton_pair = force->newton_pair;
   special_lj[0] = force->special_lj[0];
   special_lj[1] = force->special_lj[1];
   special_lj[2] = force->special_lj[2];
   special_lj[3] = force->special_lj[3];
-  newton_pair = force->newton_pair;
 
   // loop over neighbors of my atoms
 
@@ -147,6 +147,7 @@ F_FLOAT PairLJCutKokkos<DeviceType>::
 compute_evdwl(const F_FLOAT& rsq, const int& i, const int&j, const int& itype, const int& jtype) const {
   const F_FLOAT r2inv = 1.0/rsq;
   const F_FLOAT r6inv = r2inv*r2inv*r2inv;
+
   return r6inv*((STACKPARAMS?m_params[itype][jtype].lj3:params(itype,jtype).lj3)*r6inv -
                 (STACKPARAMS?m_params[itype][jtype].lj4:params(itype,jtype).lj4)) -
                 (STACKPARAMS?m_params[itype][jtype].offset:params(itype,jtype).offset);

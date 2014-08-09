@@ -79,6 +79,7 @@ class PairLJCutKokkos : public PairLJCut {
   //typename ArrayTypes<DeviceType>::t_ffloat_1d special_lj;
 
   int newton_pair;
+  double special_lj[4];
 
   typename ArrayTypes<DeviceType>::tdual_ffloat_2d k_cutsq;
   typename ArrayTypes<DeviceType>::t_ffloat_2d d_cutsq;
