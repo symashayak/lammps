@@ -43,15 +43,19 @@ CommKokkos::CommKokkos(LAMMPS *lmp) : CommBrick(lmp)
 
   // initialize comm buffers & exchange memory
 
-  maxsend = BUFMIN;
-  k_buf_send = ArrayTypes<LMPDeviceType>::
-    tdual_xfloat_2d("comm:k_buf_send",(maxsend+BUFEXTRA+5)/6,6);
-  buf_send = k_buf_send.view<LMPHostType>().ptr_on_device();
+  // maxsend = BUFMIN;
+  // k_buf_send = ArrayTypes<LMPDeviceType>::
+  //   tdual_xfloat_2d("comm:k_buf_send",(maxsend+BUFEXTRA+5)/6,6);
+  // buf_send = k_buf_send.view<LMPHostType>().ptr_on_device();
+  maxsend = 0;
+  buf_send = NULL;
 
-  maxrecv = BUFMIN;
-  k_buf_recv = ArrayTypes<LMPDeviceType>::
-    tdual_xfloat_2d("comm:k_buf_recv",(maxrecv+5)/6,6);
-  buf_recv = k_buf_recv.view<LMPHostType>().ptr_on_device();
+  // maxrecv = BUFMIN;
+  // k_buf_recv = ArrayTypes<LMPDeviceType>::
+  //   tdual_xfloat_2d("comm:k_buf_recv",(maxrecv+5)/6,6);
+  // buf_recv = k_buf_recv.view<LMPHostType>().ptr_on_device();
+  maxrecv = 0;
+  buf_recv = NULL;
 
   k_exchange_sendlist = ArrayTypes<LMPDeviceType>::
     tdual_int_1d("comm:k_exchange_sendlist",100);
