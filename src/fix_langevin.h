@@ -29,19 +29,19 @@ class FixLangevin : public Fix {
   FixLangevin(class LAMMPS *, int, char **);
   virtual ~FixLangevin();
   int setmask();
-  void init();
+  virtual void init();
   void setup(int);
   virtual void post_force(int);
   void post_force_respa(int, int, int);
   virtual void end_of_step();
   void reset_target(double);
-  void reset_dt();
+  virtual void reset_dt();
   int modify_param(int, char **);
   virtual double compute_scalar();
   double memory_usage();
   virtual void *extract(const char *, int &);
-  void grow_arrays(int);
-  void copy_arrays(int, int, int);
+  virtual void grow_arrays(int);
+  virtual void copy_arrays(int, int, int);
   int pack_exchange(int, double *);
   int unpack_exchange(int, double *);
 
@@ -55,6 +55,7 @@ class FixLangevin : public Fix {
   int tstyle,tvar;
   double gjffac;
   char *tstr;
+  int seed;
 
   class AtomVecEllipsoid *avec;
 
@@ -82,7 +83,8 @@ class FixLangevin : public Fix {
 #endif
   void omega_thermostat();
   void angmom_thermostat();
-  void compute_target();
+  virtual void compute_target();
+
 };
 
 }
