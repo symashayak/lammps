@@ -44,11 +44,16 @@
 #ifndef KOKKOS_THREADS_HPP
 #define KOKKOS_THREADS_HPP
 
+#include <Kokkos_Macros.hpp>
+
+#if defined( KOKKOS_HAVE_PTHREAD )
+
 #include <cstddef>
 #include <iosfwd>
 #include <Kokkos_Layout.hpp>
 #include <Kokkos_MemoryTraits.hpp>
 #include <Kokkos_HostSpace.hpp>
+#include <impl/Kokkos_Tags.hpp>
 
 /*--------------------------------------------------------------------------*/
 
@@ -67,9 +72,12 @@ class Threads {
 public:
   //! \name Type declarations that all Kokkos devices must provide.
   //@{
+  //! The tag (what type of kokkos_object is this).
+  typedef Impl::DeviceTag       kokkos_tag ;
 
   typedef Threads                  device_type ;
   typedef Kokkos::HostSpace        memory_space ;
+  typedef Threads                  scratch_memory_space ;
   typedef memory_space::size_type  size_type ;
   typedef Kokkos::LayoutRight      array_layout ;
   typedef Kokkos::Threads          host_mirror_device_type ;
@@ -120,6 +128,8 @@ public:
   static void print_configuration( std::ostream & , const bool detail = false );
 
   //@}
+  //--------------------------------------------------------------------------
+  //--------------------------------------------------------------------------
   //! \name Function for the functor device interface */
   //@{
 
@@ -150,11 +160,12 @@ public:
   template< typename TypeLocal , typename TypeGlobal >
   KOKKOS_INLINE_FUNCTION TypeGlobal team_scan( const TypeLocal & value , TypeGlobal * const global_accum );
 
-  KOKKOS_INLINE_FUNCTION void * get_shmem( const int size );
+  KOKKOS_INLINE_FUNCTION void * get_shmem( const int size ) const ;
 
   explicit inline Threads( Impl::ThreadsExec & );
 
   /**@} */
+  /*------------------------------------------------------------------------*/
   /*------------------------------------------------------------------------*/
   //! \name Device-specific functions
   //@{
@@ -183,6 +194,8 @@ public:
 
   static int is_initialized();
 
+  static Threads & instance( int = 0 );
+
   /** \brief  Maximum size of a single thread team.
    *
    *  If a parallel_{for,reduce,scan} operation requests a team_size that
@@ -190,8 +203,9 @@ public:
    *  then some threads will idle.
    */
   KOKKOS_INLINE_FUNCTION static unsigned team_max();
-
-  KOKKOS_INLINE_FUNCTION static unsigned league_max();
+  KOKKOS_INLINE_FUNCTION static unsigned team_recommended();
+  KOKKOS_INLINE_FUNCTION static unsigned hardware_thread_id();
+  KOKKOS_INLINE_FUNCTION static unsigned max_hardware_threads();
 
   //@}
   /*------------------------------------------------------------------------*/
@@ -207,12 +221,15 @@ private:
 
 } // namespace Kokkos
 
+#include <Kokkos_ExecPolicy.hpp>
 #include <Kokkos_Parallel.hpp>
 #include <Threads/Kokkos_ThreadsExec.hpp>
 #include <Threads/Kokkos_Threads_Parallel.hpp>
 
+//----------------------------------------------------------------------------
+//----------------------------------------------------------------------------
+
+#endif /* #if defined( KOKKOS_HAVE_PTHREAD ) */
 #endif /* #define KOKKOS_THREADS_HPP */
 
-//----------------------------------------------------------------------------
-//----------------------------------------------------------------------------
 

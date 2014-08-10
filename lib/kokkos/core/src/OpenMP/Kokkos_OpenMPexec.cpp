@@ -1,13 +1,13 @@
 /*
 //@HEADER
 // ************************************************************************
-// 
+//
 //   Kokkos: Manycore Performance-Portable Multidimensional Arrays
 //              Copyright (2012) Sandia Corporation
-// 
+//
 // Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
 // the U.S. Government retains certain rights in this software.
-// 
+//
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
 // met:
@@ -35,8 +35,8 @@
 // NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-// Questions? Contact  H. Carter Edwards (hcedwar@sandia.gov) 
-// 
+// Questions? Contact  H. Carter Edwards (hcedwar@sandia.gov)
+//
 // ************************************************************************
 //@HEADER
 */
@@ -46,7 +46,10 @@
 #include <iostream>
 #include <Kokkos_OpenMP.hpp>
 #include <Kokkos_hwloc.hpp>
+#include <impl/Kokkos_Error.hpp>
 #include <iostream>
+
+#ifdef KOKKOS_HAVE_OPENMP
 
 namespace Kokkos {
 namespace Impl {
@@ -129,9 +132,17 @@ void OpenMPexec::team_work_init( size_t league_size , size_t team_size )
     if ( s_threads_per_numa < team_size ) { team_size = s_threads_per_numa ; }
 
     // Execution is using device-team interface:
+    const unsigned pool_size = omp_get_num_threads();
 
-    const unsigned pool_size     = omp_get_num_threads();
-    const unsigned team_alloc    = s_threads_per_core * ( ( team_size + s_threads_per_core - 1 ) / s_threads_per_core );
+    // Round up team size to be a multiple of threads per core:
+    const unsigned team_alloc_core = s_threads_per_core * ( ( team_size + s_threads_per_core - 1 ) / s_threads_per_core );
+
+    // Number of teams which can be allocated:
+    const unsigned team_count = pool_size / team_alloc_core ;
+
+    // Number of threads to allocate per team:
+    const unsigned team_alloc = pool_size / team_count ;
+
     const unsigned pool_rank_rev = pool_size - ( m_pool_rank + 1 );
     const unsigned team_rank_rev = pool_rank_rev % team_alloc ;
 
@@ -290,19 +301,6 @@ void * OpenMPexec::get_shmem( const int size )
 namespace Kokkos {
 
 KOKKOS_FUNCTION
-unsigned OpenMP::league_max()
-{
-#ifndef __CUDA_ARCH__
-  Impl::OpenMPexec::verify_initialized("Kokkos::OpenMP::league_max" );
-  Impl::OpenMPexec::verify_is_process("Kokkos::OpenMP::league_max" );
-
-  return unsigned( std::numeric_limits<int>::max() );
-#else
-  return 0;
-#endif
-}
-
-KOKKOS_FUNCTION
 unsigned OpenMP::team_max()
 {
 #ifndef __CUDA_ARCH__
@@ -312,6 +310,37 @@ unsigned OpenMP::team_max()
   return Impl::s_threads_per_numa ;
 #else
   return 0;
+#endif
+}
+
+KOKKOS_FUNCTION
+unsigned OpenMP::team_recommended()
+{
+#ifndef __CUDA_ARCH__
+  Impl::OpenMPexec::verify_initialized("Kokkos::OpenMP::team_recommended" );
+  Impl::OpenMPexec::verify_is_process("Kokkos::OpenMP::team_recommended" );
+
+  return Impl::s_threads_per_core ;
+#else
+  return 0;
+#endif
+}
+
+KOKKOS_FUNCTION
+unsigned OpenMP::hardware_thread_id() {
+#ifndef __CUDA_ARCH__
+  return omp_get_thread_num();
+#else
+  return 0;
+#endif
+}
+
+KOKKOS_FUNCTION
+unsigned OpenMP::max_hardware_threads() {
+#ifndef __CUDA_ARCH__
+  return omp_get_max_threads();
+#else
+  return 1;
 #endif
 }
 
@@ -331,7 +360,12 @@ void OpenMP::initialize( unsigned thread_count ,
 
   if ( ! is_initialized ) {
 
-    Impl::s_using_hwloc = hwloc::available() && (use_cores_per_numa > 0);
+    // Use hwloc thread pinning if concerned with locality.
+    // If spreading threads across multiple NUMA regions.
+    // If hyperthreading is enabled.
+    Impl::s_using_hwloc = hwloc::available() && (
+                            ( 1 < Kokkos::hwloc::get_available_numa_count() ) ||
+                            ( 1 < Kokkos::hwloc::get_available_threads_per_core() ) );
 
     std::pair<unsigned,unsigned> threads_coord[ Impl::OpenMPexec::MAX_THREAD_COUNT ];
 
@@ -421,5 +455,62 @@ void OpenMP::finalize()
     hwloc::unbind_this_thread();
 }
 
+//----------------------------------------------------------------------------
+
+void OpenMP::print_configuration( std::ostream & s , const bool detail )
+{
+  Impl::OpenMPexec::verify_is_process( "OpenMP::print_configuration" );
+
+  s << "Kokkos::OpenMP" ;
+
+#if defined( KOKKOS_HAVE_OPENMP )
+  s << " KOKKOS_HAVE_OPENMP" ;
+#endif
+#if defined( KOKKOS_HAVE_HWLOC )
+
+  const unsigned numa_count       = Kokkos::hwloc::get_available_numa_count();
+  const unsigned cores_per_numa   = Kokkos::hwloc::get_available_cores_per_numa();
+  const unsigned threads_per_core = Kokkos::hwloc::get_available_threads_per_core();
+
+  s << " hwloc[" << numa_count << "x" << cores_per_numa << "x" << threads_per_core << "]"
+    << " hwloc_binding_" << ( Impl::s_using_hwloc ? "enabled" : "disabled" )
+    ;
+#endif
+
+  const bool is_initialized = 0 != Impl::OpenMPexec::m_thread[0] ;
+
+  if ( is_initialized ) {
+    s << " threads[" << omp_get_max_threads() << "]"
+      << " threads_per_numa[" << Impl::s_threads_per_numa << "]"
+      << " threads_per_core[" << Impl::s_threads_per_core << "]"
+      << std::endl ;
+
+    if ( detail ) {
+      std::vector< std::pair<unsigned,unsigned> > coord( omp_get_max_threads() );
+
+#pragma omp parallel
+      {
+#pragma omp critical
+        {
+          coord[ omp_get_thread_num() ] = hwloc::get_this_thread_coordinate();
+        }
+/* END #pragma omp critical */
+      }
+/* END #pragma omp parallel */
+
+      for ( unsigned i = 0 ; i < coord.size() ; ++i ) {
+        s << "  thread omp_rank[" << i << "]" 
+          << " kokkos_rank[" << Impl::OpenMPexec::m_thread[ i ]->m_pool_rank << "]"
+          << " hwloc_coord[" << coord[i].first << "." << coord[i].second << "]" 
+          << std::endl ;
+      }
+    }
+  }
+  else {
+    s << " not initialized" << std::endl ;
+  }
+}
+
 } // namespace Kokkos
 
+#endif //KOKKOS_HAVE_OPENMP

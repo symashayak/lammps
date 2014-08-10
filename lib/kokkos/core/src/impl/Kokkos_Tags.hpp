@@ -43,75 +43,75 @@
 //@HEADER
 */
 
-#ifndef KOKKOS_MEMORYTRAITS_HPP
-#define KOKKOS_MEMORYTRAITS_HPP
+#ifndef KOKKOS_TAGS_HPP
+#define KOKKOS_TAGS_HPP
 
-#include <impl/Kokkos_Tags.hpp>
-//----------------------------------------------------------------------------
-
-namespace Kokkos {
-
-/** \brief  Memory access traits for views, an extension point.
- *
- *  These traits should be orthogonal.  If there are dependencies then
- *  the MemoryTraits template must detect and enforce dependencies.
- *
- *  A zero value is the default for a View, indicating that none of
- *  these traits are present.
- */
-enum MemoryTraitsFlags
-  { Unmanaged  = 0x01
-  , RandomAccess = 0x02
-  , Atomic = 0x04
-  };
-
-template < unsigned T >
-struct MemoryTraits {
-  //! The tag (what type of kokkos_object is this).
-  typedef Impl::MemoryTraitsTag       kokkos_tag ;
-
-  enum { Unmanaged  = T & unsigned(Kokkos::Unmanaged) };
-  enum { RandomAccess = T & unsigned(Kokkos::RandomAccess) };
-  enum { Atomic = T & unsigned(Kokkos::Atomic) };
-
-  typedef MemoryTraits memory_traits ;
-};
-
-} // namespace Kokkos
+#include <impl/Kokkos_Traits.hpp>
 
 //----------------------------------------------------------------------------
-
-namespace Kokkos {
-
-typedef Kokkos::MemoryTraits<0> MemoryManaged ;
-typedef Kokkos::MemoryTraits< Kokkos::Unmanaged > MemoryUnmanaged ;
-typedef Kokkos::MemoryTraits< Kokkos::Unmanaged | Kokkos::RandomAccess > MemoryRandomAccess ;
-
-} // namespace Kokkos
-
 //----------------------------------------------------------------------------
 
 namespace Kokkos {
 namespace Impl {
 
-/** \brief Memory alignment settings
- *
- *  Sets global value for memory alignment.
- *  Enable compatibility of views from different devices with static stride.
- *  Use compiler flag to enable overwrites.
- */
-enum { MEMORY_ALIGNMENT =
-#if defined( KOKKOS_MEMORY_ALIGNMENT )
-  KOKKOS_MEMORY_ALIGNMENT
-#else
-  128
+struct LayoutTag {};
+struct DeviceTag {};
+struct MemoryTraitsTag {};
+struct ViewTag {};
+
+struct ExecutionPolicyTag {};
+struct ExecutionSpaceTag {};
+struct MemorySpaceTag {};
+
+template< class C , bool b = Impl::is_same< typename C::kokkos_tag , Impl::ExecutionPolicyTag >::value >
+struct is_execution_policy : public bool_< b > {};
+
+template< class C , bool b = Impl::is_same< typename C::kokkos_tag , Impl::ExecutionSpaceTag >::value >
+struct is_execution_space : public bool_< b > {};
+
+
+template< class C , bool b = Impl::is_same< typename C::kokkos_tag , Impl::MemorySpaceTag >::value >
+struct is_memory_space : public bool_< b > {};
+
+}
+
+
+
+
+
+
+template< class C , class Enable = void >
+struct is_layout : public Impl::false_type {};
+
+template<class C>
+struct is_layout<C,typename Impl::enable_if< ! Impl::is_same<typename C::kokkos_tag,int>::value>::type > {
+  enum {value=bool(Impl::is_same<Impl::LayoutTag,typename C::kokkos_tag>::value)};
+};
+
+template< class C , class Enable = void >
+struct is_device : public Impl::false_type {};
+
+template<class C>
+struct is_device<C,typename Impl::enable_if< ! Impl::is_same<typename C::kokkos_tag,int>::value>::type > {
+  enum {value=bool(Impl::is_same<Impl::DeviceTag,typename C::kokkos_tag>::value)};
+};
+
+template< class C , class Enable = void >
+struct is_memorytraits : public Impl::false_type {};
+
+template<class C>
+struct is_memorytraits<C,typename Impl::enable_if< ! Impl::is_same<typename C::kokkos_tag,int>::value>::type > {
+  enum {value=bool(Impl::is_same<Impl::MemoryTraitsTag,typename C::kokkos_tag>::value)};
+};
+
+template< class C , class Enable = void >
+struct is_view : public Impl::false_type {};
+
+template<class C>
+struct is_view<C,typename Impl::enable_if< ! Impl::is_same<typename C::kokkos_tag,int>::value>::type > {
+  enum {value=bool(Impl::is_same<Impl::ViewTag,typename C::kokkos_tag>::value)};
+};
+
+}
+
 #endif
-  };
-
-enum { MEMORY_ALIGNMENT_THRESHOLD = 4 };
-
-} //namespace Impl
-} // namespace Kokkos
-
-#endif /* #ifndef KOKKOS_MEMORYTRAITS_HPP */
-

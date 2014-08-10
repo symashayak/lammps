@@ -98,7 +98,7 @@ private:
 namespace Kokkos {
 
 inline __device__ 
-void * Cuda::get_shmem( const int size ) { return m_exec.get_shmem( size ); }
+void * Cuda::get_shmem( const int size ) const { return m_exec.get_shmem( size ); }
 
 } // namespace Kokkos
 
@@ -161,6 +161,9 @@ CudaSpace::size_type * cuda_internal_scratch_unified( const CudaSpace::size_type
 #if defined( __CUDACC__ )
 
 /** \brief  Access to constant memory on the device */
+#ifdef KOKKOS_CUDA_USE_RELOCATABLE_DEVICE_CODE
+extern
+#endif
 __device__ __constant__
 Kokkos::Impl::CudaTraits::ConstantGlobalBufferType
 kokkos_impl_cuda_constant_memory_buffer ;
@@ -277,6 +280,9 @@ struct CudaParallelLaunch< DriverType , false > {
 
 } // namespace Impl
 } // namespace Kokkos
+
+//----------------------------------------------------------------------------
+//----------------------------------------------------------------------------
 
 #endif /* defined( __CUDACC__ ) */
 
