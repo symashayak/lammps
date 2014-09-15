@@ -42,8 +42,8 @@ class LAMMPS {
   FILE *screen;                  // screen output
   FILE *logfile;                 // logfile
 
-  char *suffix;                  // suffix to add to input script style names
-  int suffix_enable;             // 1 if suffix enabled, 0 if disabled
+  char *suffix,*suffix2;         // suffixes to add to input script style names
+  int suffix_enable;             // 1 if suffixes are enabled, 0 if disabled
   int cite_enable;               // 1 if generating log.cite, 0 if disabled
 
   class Cuda *cuda;              // CUDA accelerator class
@@ -54,7 +54,7 @@ class LAMMPS {
   LAMMPS(int, char **, MPI_Comm);
   ~LAMMPS();
   void create();
-  void post_create();
+  void post_create(int, int *, int *, char **);
   void init();
   void destroy();
 

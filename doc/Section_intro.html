@@ -109,7 +109,7 @@ it to LAMMPS.
 <LI>  open-source distribution
 <LI>  highly portable C++
 <LI>  optional libraries used: MPI and single-processor FFT
-<LI>  GPU (CUDA and OpenCL) and OpenMP support for many code features
+<LI>  GPU (CUDA and OpenCL), Intel(R) Xeon Phi(TM) coprocessors, and OpenMP support for many code features
 <LI>  easy to extend with new features and functionality
 <LI>  runs from an input script
 <LI>  syntax for defining and using variables and formulas
@@ -144,7 +144,8 @@ commands)
 </P>
 <UL><LI>  pairwise potentials: Lennard-Jones, Buckingham, Morse, Born-Mayer-Huggins,     Yukawa, soft, class 2 (COMPASS), hydrogen bond, tabulated
 <LI>  charged pairwise potentials: Coulombic, point-dipole
-<LI>  manybody potentials: EAM, Finnis/Sinclair EAM, modified EAM (MEAM),     embedded ion method (EIM), EDIP, ADP, Stillinger-Weber, Tersoff,     REBO, AIREBO, ReaxFF, COMB
+<LI>  manybody potentials: EAM, Finnis/Sinclair EAM, modified EAM (MEAM),     embedded ion method (EIM), EDIP, ADP, Stillinger-Weber, Tersoff,     REBO, AIREBO, ReaxFF, COMB, SNAP
+<LI>  charge equilibration (QEq via dynamic, point, shielded, Slater methods)
 <LI>  electron force field (eFF, AWPMD)
 <LI>  coarse-grained potentials: DPD, GayBerne, REsquared, colloidal, DLVO
 <LI>  mesoscopic potentials: granular, Peridynamics, SPH
@@ -248,7 +249,8 @@ Pizza.py WWW site</A>.
 <P>These are LAMMPS capabilities which you may not think of as typical
 molecular dynamics options:
 </P>
-<UL><LI><A HREF = "body.html">generalized aspherical particles</A>
+<UL><LI><A HREF = "balance.html">static</A> and <A HREF = "fix_balance.html">dynamic load-balancing</A>
+<LI><A HREF = "body.html">generalized aspherical particles</A>
 <LI><A HREF = "fix_srd.html">stochastic rotation dynamics (SRD)</A>
 <LI><A HREF = "fix_imd.html">real-time visualization and interactive MD</A>
 <LI><A HREF = "fix_atc.html">atom-to-continuum coupling</A> with finite elements

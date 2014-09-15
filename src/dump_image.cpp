@@ -766,7 +766,7 @@ void DumpImage::create_image()
           atom2 = atom->map(bond_atom[atom1][m]);
         } else {
           tagprev = tag[i] - iatom - 1;
-          btype = atom->map(onemols[imol]->bond_type[atom1][m]);
+          btype = atom->map(onemols[imol]->bond_type[iatom][m]);
           atom2 = atom->map(onemols[imol]->bond_atom[iatom][m]+tagprev);
         }
 
@@ -841,7 +841,7 @@ void DumpImage::create_image()
   if (subboxflag) {
     double diameter = MIN(boxxhi-boxxlo,boxyhi-boxylo);
     if (domain->dimension == 3) diameter = MIN(diameter,boxzhi-boxzlo);
-    diameter *= boxdiam;
+    diameter *= subboxdiam;
 
     double *sublo = domain->sublo;
     double *subhi = domain->subhi;

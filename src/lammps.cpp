@@ -45,6 +45,7 @@
 #include "accelerator_cuda.h"
 #include "accelerator_kokkos.h"
 #include "accelerator_omp.h"
+#include "accelerator_intel.h"
 #include "timer.h"
 #include "memory.h"
 #include "error.h"
@@ -84,12 +85,16 @@ LAMMPS::LAMMPS(int narg, char **arg, MPI_Comm communicator)
   int citeflag = 1;
   int helpflag = 0;
 
-  suffix = NULL;
+  suffix = suffix2 = NULL;
   suffix_enable = 0;
   char *rfile = NULL;
   char *dfile = NULL;
   int wdfirst,wdlast;
   int kkfirst,kklast;
+
+  int npack = 0;
+  int *pfirst = NULL;
+  int *plast = NULL;
 
   int iarg = 1;
   while (iarg < narg) {
@@ -164,6 +169,22 @@ LAMMPS::LAMMPS(int narg, char **arg, MPI_Comm communicator)
       kkfirst = iarg;
       while (iarg < narg && arg[iarg][0] != '-') iarg++;
       kklast = iarg;
+    } else if (strcmp(arg[iarg],"-package") == 0 ||
+               strcmp(arg[iarg],"-pk") == 0) {
+      if (iarg+2 > narg)
+        error->universe_all(FLERR,"Invalid command-line argument");
+      memory->grow(pfirst,npack+1,"lammps:pfirst");
+      memory->grow(plast,npack+1,"lammps:plast");
+      // delimit args for package command invocation
+      // any package arg with leading "-" will be followed by numeric digit
+      iarg++;
+      pfirst[npack] = iarg;
+      while (iarg < narg) {
+        if (arg[iarg][0] != '-') iarg++;
+        else if (isdigit(arg[iarg][1])) iarg++;
+        else break;
+      }
+      plast[npack++] = iarg;
     } else if (strcmp(arg[iarg],"-suffix") == 0 ||
                strcmp(arg[iarg],"-sf") == 0) {
       if (iarg+2 > narg)
@@ -172,6 +193,11 @@ LAMMPS::LAMMPS(int narg, char **arg, MPI_Comm communicator)
       int n = strlen(arg[iarg+1]) + 1;
       suffix = new char[n];
       strcpy(suffix,arg[iarg+1]);
+      // set 2nd suffix = "omp" when suffix = "intel"
+      if (strcmp(suffix,"intel") == 0) {
+        suffix2 = new char[4];
+        strcpy(suffix2,"omp");
+      }
       suffix_enable = 1;
       iarg += 2;
     } else if (strcmp(arg[iarg],"-reorder") == 0 ||
@@ -474,7 +500,9 @@ LAMMPS::LAMMPS(int narg, char **arg, MPI_Comm communicator)
   // allocate top-level classes
 
   create();
-  post_create();
+  post_create(npack,pfirst,plast,arg);
+  memory->destroy(pfirst);
+  memory->destroy(plast);
 
   // if helpflag set, print help and quit
 
@@ -535,6 +563,7 @@ LAMMPS::~LAMMPS()
   delete cuda;
   delete kokkos;
   delete [] suffix;
+  delete [] suffix2;
 
   delete input;
   delete universe;
@@ -571,7 +600,7 @@ void LAMMPS::create()
 
   if (kokkos) atom = new AtomKokkos(this);
   else atom = new Atom(this);
-  atom->create_avec("atomic",0,NULL,suffix);
+  atom->create_avec("atomic",0,NULL,1);
 
   group = new Group(this);
   force = new Force(this);    // must be after group, to create temperature
@@ -587,16 +616,71 @@ void LAMMPS::create()
 }
 
 /* ----------------------------------------------------------------------
-   invoke package-specific setup commands
+   check suffix consistency with installed packages
+   turn off suffix2 = omp if USER-OMP is not installed
+   invoke package-specific deafult package commands
+     only invoke if suffix is set and enabled
+     also check if suffix2 is set
    called from LAMMPS constructor and after clear() command
-   only invoke if suffix is set and enabled
+     so that package-specific core classes have been instantiated
 ------------------------------------------------------------------------- */
 
-void LAMMPS::post_create()
+void LAMMPS::post_create(int npack, int *pfirst, int *plast, char **arg)
 {
-  if (suffix && suffix_enable) {
-    if (strcmp(suffix,"gpu") == 0) input->one("package gpu force/neigh 0 0 1");
-    if (strcmp(suffix,"omp") == 0) input->one("package omp *");
+  // default package commands triggered by "-c on" and "-k on"
+
+  if (cuda && cuda->cuda_exists) input->one("package cuda 1");
+  if (kokkos && kokkos->kokkos_exists) input->one("package kokkos");
+
+  // suffix will always be set if suffix_enable = 1
+  // check that USER-CUDA and KOKKOS package classes were instantiated
+  // check that GPU, INTEL, USER-OMP fixes were compiled with LAMMPS
+
+  if (!suffix_enable) return;
+
+  if (strcmp(suffix,"cuda") == 0 && (cuda == NULL || cuda->cuda_exists == 0))
+    error->all(FLERR,"Using suffix cuda without USER-CUDA package enabled");
+  if (strcmp(suffix,"gpu") == 0 && !modify->check_package("GPU"))
+    error->all(FLERR,"Using suffix gpu without GPU package installed");
+  if (strcmp(suffix,"intel") == 0 && !modify->check_package("INTEL"))
+    error->all(FLERR,"Using suffix intel without USER-INTEL package installed");
+  if (strcmp(suffix,"kk") == 0 && 
+      (kokkos == NULL || kokkos->kokkos_exists == 0))
+    error->all(FLERR,"Using suffix kk without KOKKOS package enabled");
+  if (strcmp(suffix,"omp") == 0 && !modify->check_package("OMP"))
+    error->all(FLERR,"Using suffix omp without USER-OMP package installed");
+
+  // suffix2 only currently set by -sf intel
+  // unset if LAMMPS was not built with USER-OMP package
+
+  if (suffix2 && strcmp(suffix2,"omp") == 0 && !modify->check_package("OMP")) {
+    delete [] suffix2;
+    suffix2 = NULL;
+  }
+
+  if (suffix) {
+    if (strcmp(suffix,"gpu") == 0) input->one("package gpu 1");
+    if (strcmp(suffix,"intel") == 0) input->one("package intel 1");
+    if (strcmp(suffix,"omp") == 0) input->one("package omp 0");
+  }
+  if (suffix2) {
+    if (strcmp(suffix,"omp") == 0) input->one("package omp 0");
+  }
+
+  // invoke any command-line package commands
+
+  if (npack) {
+    char str[128];
+    for (int i = 0; i < npack; i++) {
+      strcpy(str,"package");
+      for (int j = pfirst[i]; j < plast[i]; j++) {
+        if (strlen(str) + strlen(arg[j]) + 2 > 128)
+          error->all(FLERR,"Too many -pk arguments in command line");
+        strcat(str," ");
+        strcat(str,arg[j]);
+      }
+      input->one(str);
+    }
   }
 }
 
@@ -607,9 +691,6 @@ void LAMMPS::post_create()
 
 void LAMMPS::init()
 {
-  if (cuda) cuda->accelerator(0,NULL);
-  if (kokkos) kokkos->accelerator(0,NULL);
-
   update->init();
   force->init();         // pair must come after update due to minimizer
   domain->init();
@@ -659,14 +740,16 @@ void LAMMPS::help()
           "\nCommand line options:\n\n"
           "-cuda on/off                : turn CUDA mode on or off (-c)\n"
           "-echo none/screen/log/both  : echoing of input script (-e)\n"
-          "-in filename                : read input from file, not stdin (-i)\n"
           "-help                       : print this help message (-h)\n"
+          "-in filename                : read input from file, not stdin (-i)\n"
           "-kokkos on/off ...          : turn KOKKOS mode on or off (-k)\n"
           "-log none/filename          : where to send log output (-l)\n"
           "-nocite                     : disable writing log.cite file (-nc)\n"
+          "-package style ...          : invoke package command (-pk)\n"
           "-partition size1 size2 ...  : assign partition sizes (-p)\n"
           "-plog basename              : basename for partition logs (-pl)\n"
           "-pscreen basename           : basename for partition screens (-ps)\n"
+          "-restart rfile dfile ...    : convert restart to data file (-r)\n" 
           "-reorder topology-specs     : processor reordering (-r)\n"
           "-screen none/filename       : where to send screen output (-sc)\n"
           "-suffix cuda/gpu/opt/omp    : style suffix to apply (-sf)\n"
