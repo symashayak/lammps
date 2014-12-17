@@ -21,7 +21,7 @@ fix ID group-ID style_name keyword value ... :pre
 
 ID, group-ID are documented in "fix"_fix.html command :ulb,l
 style_name = {nvt} or {npt} or {nph} :l
-one or more keyword value pairs may be appended
+one or more keyword/value pairs may be appended :l
 keyword = {temp} or {iso} or {aniso} or {tri} or {x} or {y} or {z} or {xy} or {yz} or {xz} or {couple} or {tchain} or {pchain} or {mtk} or {tloop} or {ploop} or {nreset} or {drag} or {dilate} or {scalexy} or {scaleyz} or {scalexz} or {flip} or {fixedpoint}
   {temp} values = Tstart Tstop Tdamp
     Tstart,Tstop = external temperature at start/end of run
@@ -573,6 +573,14 @@ can only be used if the 2nd dimension in the keyword is periodic,
 and if the tilt factor is not coupled to the barostat via keywords
 {tri}, {yz}, {xz}, and {xy}.
   
+These fixes can be used with dynamic groups as defined by the
+"group"_group.html command.  Likewise they can be used with groups to
+which atoms are added or deleted over time, e.g. a deposition
+simulation.  However, the conservation properties of the thermostat
+and barostat are defined for systems with a static set of atoms.  You
+may observe odd behavior if the atoms in a group vary dramatically
+over time or the atom count becomes very small.
+
 [Related commands:]
 
 "fix nve"_fix_nve.html, "fix_modify"_fix_modify.html,

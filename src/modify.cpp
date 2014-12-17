@@ -271,7 +271,12 @@ void Modify::init()
 void Modify::setup(int vflag)
 {
   // compute setup needs to come before fix setup
-  // b/c NH fixes need DOF of temperature computes
+  //   b/c NH fixes need DOF of temperature computes
+  // fix group setup() is special case since populates a dynamic group
+  //   needs to be done before temperature compute setup
+
+  for (int i = 0; i < nfix; i++)
+    if (strcmp(fix[i]->style,"GROUP") == 0) fix[i]->setup(vflag);
 
   for (int i = 0; i < ncompute; i++) compute[i]->setup();
 
@@ -754,7 +759,7 @@ void Modify::add_fix(int narg, char **arg, int trysuffix)
     fix[ifix] = fix_creator(lmp,narg,arg);
   }
 
-  if (fix[ifix] == NULL) error->all(FLERR,"Invalid fix style");
+  if (fix[ifix] == NULL) error->all(FLERR,"Unknown fix style");
 
   // check if Fix is in restart_global list
   // if yes, pass state info to the Fix so it can reset itself
@@ -925,7 +930,7 @@ void Modify::add_compute(int narg, char **arg, int trysuffix)
     compute[ncompute] = compute_creator(lmp,narg,arg);
   }
 
-  if (compute[ncompute] == NULL) error->all(FLERR,"Invalid compute style");
+  if (compute[ncompute] == NULL) error->all(FLERR,"Unknown compute style");
 
   ncompute++;
 }

@@ -217,7 +217,7 @@ FixPour::FixPour(LAMMPS *lmp, int narg, char **arg) :
   // volume_one = volume of inserted particle (with max possible radius)
   // in 3d, insure dy >= 1, for quasi-2d simulations
 
-  double volume,volume_one;
+  double volume,volume_one=1.0;
 
   molradius_max = 0.0;
   if (mode == MOLECULE) {
@@ -255,6 +255,7 @@ FixPour::FixPour(LAMMPS *lmp, int narg, char **arg) :
   }
 
   nper = static_cast<int> (volfrac*volume/volume_one);
+  if (nper == 0) error->all(FLERR,"Fix pour insertion count per timestep is 0");
   int nfinal = update->ntimestep + 1 + (ninsert-1)/nper * nfreq;
 
   // print stats

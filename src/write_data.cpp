@@ -11,7 +11,6 @@
    See the README file in the top-level LAMMPS directory.
 ------------------------------------------------------------------------- */
 
-#include "lmptype.h"
 #include "mpi.h"
 #include "string.h"
 #include "write_data.h"
@@ -329,10 +328,11 @@ void WriteData::atoms()
   // all other procs wait for ping, send their chunk to proc 0
 
   int tmp,recvrow;
-  MPI_Status status;
-  MPI_Request request;
 
   if (me == 0) {
+    MPI_Status status;
+    MPI_Request request;
+
     fprintf(fp,"\nAtoms # %s\n\n",atom->atom_style);
     for (int iproc = 0; iproc < nprocs; iproc++) {
       if (iproc) {
@@ -347,7 +347,7 @@ void WriteData::atoms()
     }
     
   } else {
-    MPI_Recv(&tmp,0,MPI_INT,0,0,world,&status);
+    MPI_Recv(&tmp,0,MPI_INT,0,0,world,MPI_STATUS_IGNORE);
     MPI_Rsend(&buf[0][0],sendrow*ncol,MPI_DOUBLE,0,0,world);
   }
 
@@ -382,10 +382,11 @@ void WriteData::velocities()
   // all other procs wait for ping, send their chunk to proc 0
 
   int tmp,recvrow;
-  MPI_Status status;
-  MPI_Request request;
 
   if (me == 0) {
+    MPI_Status status;
+    MPI_Request request;
+
     fprintf(fp,"\nVelocities\n\n");
     for (int iproc = 0; iproc < nprocs; iproc++) {
       if (iproc) {
@@ -400,7 +401,7 @@ void WriteData::velocities()
     }
     
   } else {
-    MPI_Recv(&tmp,0,MPI_INT,0,0,world,&status);
+    MPI_Recv(&tmp,0,MPI_INT,0,0,world,MPI_STATUS_IGNORE);
     MPI_Rsend(&buf[0][0],sendrow*ncol,MPI_DOUBLE,0,0,world);
   }
 
@@ -433,11 +434,12 @@ void WriteData::bonds()
   // all other procs wait for ping, send their chunk to proc 0
 
   int tmp,recvrow;
-  MPI_Status status;
-  MPI_Request request;
 
   int index = 1;
   if (me == 0) {
+    MPI_Status status;
+    MPI_Request request;
+
     fprintf(fp,"\nBonds\n\n");
     for (int iproc = 0; iproc < nprocs; iproc++) {
       if (iproc) {
@@ -453,7 +455,7 @@ void WriteData::bonds()
     }
     
   } else {
-    MPI_Recv(&tmp,0,MPI_INT,0,0,world,&status);
+    MPI_Recv(&tmp,0,MPI_INT,0,0,world,MPI_STATUS_IGNORE);
     MPI_Rsend(&buf[0][0],sendrow*ncol,MPI_LMP_TAGINT,0,0,world);
   }
 
@@ -486,11 +488,12 @@ void WriteData::angles()
   // all other procs wait for ping, send their chunk to proc 0
 
   int tmp,recvrow;
-  MPI_Status status;
-  MPI_Request request;
 
   int index = 1;
   if (me == 0) {
+    MPI_Status status;
+    MPI_Request request;
+
     fprintf(fp,"\nAngles\n\n");
     for (int iproc = 0; iproc < nprocs; iproc++) {
       if (iproc) {
@@ -506,7 +509,7 @@ void WriteData::angles()
     }
     
   } else {
-    MPI_Recv(&tmp,0,MPI_INT,0,0,world,&status);
+    MPI_Recv(&tmp,0,MPI_INT,0,0,world,MPI_STATUS_IGNORE);
     MPI_Rsend(&buf[0][0],sendrow*ncol,MPI_LMP_TAGINT,0,0,world);
   }
 
@@ -557,11 +560,12 @@ void WriteData::dihedrals()
   // all other procs wait for ping, send their chunk to proc 0
 
   int tmp,recvrow;
-  MPI_Status status;
-  MPI_Request request;
 
   int index = 1;
   if (me == 0) {
+    MPI_Status status;
+    MPI_Request request;
+
     fprintf(fp,"\nDihedrals\n\n");
     for (int iproc = 0; iproc < nprocs; iproc++) {
       if (iproc) {
@@ -577,7 +581,7 @@ void WriteData::dihedrals()
     }
     
   } else {
-    MPI_Recv(&tmp,0,MPI_INT,0,0,world,&status);
+    MPI_Recv(&tmp,0,MPI_INT,0,0,world,MPI_STATUS_IGNORE);
     MPI_Rsend(&buf[0][0],sendrow*ncol,MPI_LMP_TAGINT,0,0,world);
   }
 
@@ -628,11 +632,12 @@ void WriteData::impropers()
   // all other procs wait for ping, send their chunk to proc 0
 
   int tmp,recvrow;
-  MPI_Status status;
-  MPI_Request request;
 
   int index = 1;
   if (me == 0) {
+    MPI_Status status;
+    MPI_Request request;
+
     fprintf(fp,"\nImpropers\n\n");
     for (int iproc = 0; iproc < nprocs; iproc++) {
       if (iproc) {
@@ -648,7 +653,7 @@ void WriteData::impropers()
     }
     
   } else {
-    MPI_Recv(&tmp,0,MPI_INT,0,0,world,&status);
+    MPI_Recv(&tmp,0,MPI_INT,0,0,world,MPI_STATUS_IGNORE);
     MPI_Rsend(&buf[0][0],sendrow*ncol,MPI_LMP_TAGINT,0,0,world);
   }
 
@@ -681,11 +686,12 @@ void WriteData::fix(int ifix, int mth)
   // all other procs wait for ping, send their chunk to proc 0
 
   int tmp,recvrow;
-  MPI_Status status;
-  MPI_Request request;
 
   int index = 1;
   if (me == 0) {
+    MPI_Status status;
+    MPI_Request request;
+
     modify->fix[ifix]->write_data_section_keyword(mth,fp);
     for (int iproc = 0; iproc < nprocs; iproc++) {
       if (iproc) {
@@ -701,7 +707,7 @@ void WriteData::fix(int ifix, int mth)
     }
     
   } else {
-    MPI_Recv(&tmp,0,MPI_INT,0,0,world,&status);
+    MPI_Recv(&tmp,0,MPI_INT,0,0,world,MPI_STATUS_IGNORE);
     MPI_Rsend(&buf[0][0],sendrow*ncol,MPI_DOUBLE,0,0,world);
   }
 

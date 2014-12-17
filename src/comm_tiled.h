@@ -44,6 +44,10 @@ class CommTiled : public Comm {
 
   void forward_comm_array(int, double **);          // forward comm of array
   int exchange_variable(int, double *, double *&);  // exchange on neigh stencil
+
+  void coord2proc_setup();
+  int coord2proc(double *, int &, int &, int &);
+
   bigint memory_usage();
 
  private:
@@ -88,7 +92,6 @@ class CommTiled : public Comm {
 
   int maxreqstat;               // max size of Request and Status vectors
   MPI_Request *requests;
-  MPI_Status *statuses;
 
   struct RCBinfo {
     double mysplit[3][2];      // fractional RCB bounding box for one proc

@@ -15,7 +15,6 @@
    Contributing author: Ray Shan (Sandia, tnshan@sandia.gov)
 ------------------------------------------------------------------------- */
 
-#include "lmptype.h"
 #include "stdlib.h"
 #include "string.h"
 #include "fix_ave_atom.h"
@@ -256,7 +255,6 @@ void FixReaxCBonds::RecvBuffer(double *buf, int nbuf, int nbuf_local,
 
   double cutof3 = reaxc->control->bg_cut;
   MPI_Request irequest, irequest2;
-  MPI_Status istatus;
 
   if (me == 0 ){
     fprintf(fp,"# Timestep " BIGINT_FORMAT " \n",ntimestep);
@@ -276,7 +274,7 @@ void FixReaxCBonds::RecvBuffer(double *buf, int nbuf, int nbuf_local,
         nlocal_tmp = nlocal;
       } else {
         MPI_Irecv(&buf[0],nbuf,MPI_DOUBLE,inode,0,world,&irequest);
-        MPI_Wait(&irequest,&istatus);
+        MPI_Wait(&irequest,MPI_STATUS_IGNORE);
         nlocal_tmp = nint(buf[0]);
       }
       j = 2;
@@ -309,7 +307,7 @@ void FixReaxCBonds::RecvBuffer(double *buf, int nbuf, int nbuf_local,
     }
   } else {
     MPI_Isend(&buf[0],nbuf_local,MPI_DOUBLE,0,0,world,&irequest2);
-    MPI_Wait(&irequest2,&istatus);
+    MPI_Wait(&irequest2,MPI_STATUS_IGNORE);
   }
   if(me ==0) fprintf(fp,"# \n");
 

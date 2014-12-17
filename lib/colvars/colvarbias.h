@@ -15,7 +15,7 @@ public:
   std::string    name;
 
   /// Add a new collective variable to this bias
-  void add_colvar (std::string const &cv_name);
+  void add_colvar(std::string const &cv_name);
 
   /// Retrieve colvar values and calculate their biasing forces
   /// Return bias energy
@@ -29,6 +29,15 @@ public:
   /// Calculate change in energy from using alternate configuration
   virtual cvm::real energy_difference(std::string const &conf);
 
+  /// Give the total number of bins for a given bias.
+  virtual int bin_num();
+  /// Calculate the bin index for a given bias.
+  virtual int current_bin();
+  //// Give the count at a given bin index.
+  virtual int bin_count(int bin_index);
+  //// Share information between replicas, whatever it may be.
+  virtual int replica_share();
+
   /// Perform analysis tasks
   virtual inline void analyse() {}
 
@@ -39,7 +48,7 @@ public:
   ///
   /// The constructor of the colvarbias base class is protected, so
   /// that it can only be called from inherited classes
-  colvarbias (std::string const &conf, char const *key);
+  colvarbias(std::string const &conf, char const *key);
 
   /// Default constructor
   colvarbias();
@@ -48,18 +57,18 @@ public:
   virtual ~colvarbias();
 
   /// Read the bias configuration from a restart file
-  virtual std::istream & read_restart (std::istream &is) = 0;
+  virtual std::istream & read_restart(std::istream &is) = 0;
 
   /// Write the bias configuration to a restart file
-  virtual std::ostream & write_restart (std::ostream &os) = 0;
+  virtual std::ostream & write_restart(std::ostream &os) = 0;
 
   /// Write a label to the trajectory file (comment line)
-  virtual std::ostream & write_traj_label (std::ostream &os);
+  virtual std::ostream & write_traj_label(std::ostream &os);
 
   /// Output quantities such as the bias energy to the trajectory file
-  virtual std::ostream & write_traj (std::ostream &os);
+  virtual std::ostream & write_traj(std::ostream &os);
 
-  inline cvm::real get_energy () {
+  inline cvm::real get_energy() {
     return bias_energy;
   }
 protected:

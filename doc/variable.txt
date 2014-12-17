@@ -49,15 +49,15 @@ style = {delete} or {index} or {loop} or {world} or {universe} or {uloop} or {st
     math functions = sqrt(x), exp(x), ln(x), log(x), abs(x),
                      sin(x), cos(x), tan(x), asin(x), acos(x), atan(x), atan2(y,x),
                      random(x,y,z), normal(x,y,z), ceil(x), floor(x), round(x)
-                     ramp(x,y), stagger(x,y), logfreq(x,y,z), stride(x,y,z), vdisplace(x,y), swiggle(x,y,z), cwiggle(x,y,z)
+                     ramp(x,y), stagger(x,y), logfreq(x,y,z), stride(x,y,z), stride2(x,y,z,a,b,c), vdisplace(x,y), swiggle(x,y,z), cwiggle(x,y,z)
     group functions = count(group), mass(group), charge(group),
 		      xcm(group,dim), vcm(group,dim), fcm(group,dim),
-		      bound(group,xmin), gyration(group), ke(group),
+		      bound(group,dir), gyration(group), ke(group),
 		      angmom(group,dim), torque(group,dim),
                       inertia(group,dimdim), omega(group,dim)
     region functions = count(group,region), mass(group,region), charge(group,region),
 		      xcm(group,dim,region), vcm(group,dim,region), fcm(group,dim,region),
-		      bound(group,xmin,region), gyration(group,region), ke(group,reigon),
+		      bound(group,dir,region), gyration(group,region), ke(group,reigon),
 		      angmom(group,dim,region), torque(group,dim,region), 
 		      inertia(group,dimdim,region), omega(group,dim,region)
     special functions = sum(x), min(x), max(x), ave(x), trap(x), slope(x), gmask(x), rmask(x), grmask(x,y), next(x)
@@ -371,7 +371,7 @@ Constant: PI
 Thermo keywords: vol, pe, ebond, etc
 Math operators: (), -x, x+y, x-y, x*y, x/y, x^y, x%y, 
 Math operators: (), -x, x+y, x-y, x*y, x/y, x^y, x%y, x == y, x != y, x &lt y, x &lt= y, x &gt y, x &gt= y, x && y, x || y, !x
-Math functions: sqrt(x), exp(x), ln(x), log(x), abs(x), sin(x), cos(x), tan(x), asin(x), acos(x), atan(x), atan2(y,x), random(x,y,z), normal(x,y,z), ceil(x), floor(x), round(x), ramp(x,y), stagger(x,y), logfreq(x,y,z), stride(x,y,z), vdisplace(x,y), swiggle(x,y,z), cwiggle(x,y,z)
+Math functions: sqrt(x), exp(x), ln(x), log(x), abs(x), sin(x), cos(x), tan(x), asin(x), acos(x), atan(x), atan2(y,x), random(x,y,z), normal(x,y,z), ceil(x), floor(x), round(x), ramp(x,y), stagger(x,y), logfreq(x,y,z), stride(x,y,z), stride2(x,y,z,a,b,c), vdisplace(x,y), swiggle(x,y,z), cwiggle(x,y,z)
 Group functions: count(ID), mass(ID), charge(ID), xcm(ID,dim), \
                  vcm(ID,dim), fcm(ID,dim), bound(ID,dir), \
 		 gyration(ID), ke(ID), angmom(ID,dim), torque(ID,dim), \
@@ -542,15 +542,32 @@ output timesteps:
 
 The stride(x,y,z) function uses the current timestep to generate a new
 timestep.  X,y >= 0 and z > 0 and x <= y are required.  The generated
-timesteps increase in increments of z, from x to y, I.e. it generates
+timesteps increase in increments of z, from x to y, i.e. it generates
 the sequece x,x+z,x+2z,...,y.  If y-x is not a multiple of z, then
 similar to the way a for loop operates, the last value will be one
 that does not exceed y.  For any current timestep, the next timestep
-in the sequence is returned.  Thus if stagger(1000,2000,100) is used
+in the sequence is returned.  Thus if stride(1000,2000,100) is used
 in a variable by the "dump_modify every"_dump_modify.html command, it
 will generate the sequence of output timesteps:
 
 1000,1100,1200, ... ,1900,2000 :pre
+
+The stride2(x,y,z,a,b,c) function is similar to the stride() function
+except it generates two sets of strided timesteps, one at a coarser
+level and one at a finer level.  Thus it is useful for debugging,
+e.g. to produce output every timestep at the point in simulation when
+a problem occurs.  X,y >= 0 and z > 0 and x <= y are required, as are
+a,b >= 0 and c > 0 and a < b.  Also, a >= x and b <= y are required so
+that the second stride is inside the first.  The generated timesteps
+increase in increments of z, starting at x, until a is reached.  At
+that point the timestep increases in increments of c, from a to b,
+then after b, increments by z are resumed until y is reached.  For any
+current timestep, the next timestep in the sequence is returned.  Thus
+if stride(1000,2000,100,1350,1360,1) is used in a variable by the
+"dump_modify every"_dump_modify.html command, it will generate the
+sequence of output timesteps:
+
+1000,1100,1200,1300,1350,1351,1352, ... 1359,1360,1400,1500, ... ,2000 :pre
 
 The vdisplace(x,y) function takes 2 arguments: x = value0 and y =
 velocity, and uses the elapsed time to change the value by a linear
@@ -588,8 +605,8 @@ timestep-startstep.
 Group and Region Functions :h4
 
 Group functions are specified as keywords followed by one or two
-parenthesized arguments.  The first argument is the group-ID.  The
-{dim} argument, if it exists, is {x} or {y} or {z}.  The {dir}
+parenthesized arguments.  The first argument {ID} is the group-ID.
+The {dim} argument, if it exists, is {x} or {y} or {z}.  The {dir}
 argument, if it exists, is {xmin}, {xmax}, {ymin}, {ymax}, {zmin}, or
 {zmax}.  The {dimdim} argument, if it exists, is {xx} or {yy} or {zz}
 or {xy} or {yz} or {xz}.
@@ -612,9 +629,9 @@ Omega() returns components of the angular velocity of the group of
 atoms around its center of mass.
 
 Region functions are specified exactly the same way as group functions
-except they take an extra argument which is the region ID.  The
-function is computed for all atoms that are in both the group and the
-region.  If the group is "all", then the only criteria for atom
+except they take an extra final argument {IDR} which is the region ID.
+The function is computed for all atoms that are in both the group and
+the region.  If the group is "all", then the only criteria for atom
 inclusion is that it be in the region.
 
 :line

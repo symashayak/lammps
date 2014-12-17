@@ -163,10 +163,10 @@ void PairSNAP::compute(int eflag, int vflag)
 
 void PairSNAP::compute_regular(int eflag, int vflag)
 {
-  int i,j,inum,jnum,ninside;
+  int i,j,jnum,ninside;
   double delx,dely,delz,evdwl,rsq;
   double fij[3];
-  int *ilist,*jlist,*numneigh,**firstneigh;
+  int *jlist,*numneigh,**firstneigh;
   evdwl = 0.0;
 
   if (eflag || vflag) ev_setup(eflag,vflag);
@@ -179,8 +179,6 @@ void PairSNAP::compute_regular(int eflag, int vflag)
   int newton_pair = force->newton_pair;
   class SNA* snaptr = sna[0];
 
-  inum = list->inum;
-  ilist = list->ilist;
   numneigh = list->numneigh;
   firstneigh = list->firstneigh;
 
@@ -425,10 +423,10 @@ void PairSNAP::compute_optimized(int eflag, int vflag)
     }
 
     int ielem;
-    int jj,k,inum,jnum,jtype,ninside;
+    int jj,k,jnum,jtype,ninside;
     double delx,dely,delz,evdwl,rsq;
     double fij[3];
-    int *ilist,*jlist,*numneigh,**firstneigh;
+    int *jlist,*numneigh,**firstneigh;
     evdwl = 0.0;
 
 #if defined(_OPENMP)
@@ -450,8 +448,6 @@ void PairSNAP::compute_optimized(int eflag, int vflag)
     int nlocal = atom->nlocal;
     int newton_pair = force->newton_pair;
 
-    inum = list->inum;
-    ilist = list->ilist;
     numneigh = list->numneigh;
     firstneigh = list->firstneigh;
 
@@ -745,7 +741,6 @@ void PairSNAP::load_balance()
   int* procgrid = comm->procgrid;
 
   int nlocal_up,nlocal_down;
-  MPI_Status status;
   MPI_Request request;
 
   double sub_mid[3];
@@ -806,9 +801,9 @@ void PairSNAP::load_balance()
         // two stage process, first upstream movement, then downstream
 
         MPI_Sendrecv(&nlocal,1,MPI_INT,sendproc,0,
-                     &nlocal_up,1,MPI_INT,recvproc,0,world,&status);
+                     &nlocal_up,1,MPI_INT,recvproc,0,world,MPI_STATUS_IGNORE);
         MPI_Sendrecv(&nlocal,1,MPI_INT,recvproc,0,
-                     &nlocal_down,1,MPI_INT,sendproc,0,world,&status);
+                     &nlocal_down,1,MPI_INT,sendproc,0,world,MPI_STATUS_IGNORE);
         nsend = 0;
 
         // send upstream
@@ -839,7 +834,7 @@ void PairSNAP::load_balance()
         if (nlocal < nlocal_down-1) {
           nlocal++;
           int get_tag = -1;
-          MPI_Recv(&get_tag,1,MPI_INT,sendproc,0,world,&status);
+          MPI_Recv(&get_tag,1,MPI_INT,sendproc,0,world,MPI_STATUS_IGNORE);
 
           // if get_tag -1 the other process didnt have local atoms to send
 
@@ -911,9 +906,9 @@ void PairSNAP::load_balance()
         // second pass through the grid
 
         MPI_Sendrecv(&nlocal,1,MPI_INT,sendproc,0,
-                     &nlocal_up,1,MPI_INT,recvproc,0,world,&status);
+                     &nlocal_up,1,MPI_INT,recvproc,0,world,MPI_STATUS_IGNORE);
         MPI_Sendrecv(&nlocal,1,MPI_INT,recvproc,0,
-                     &nlocal_down,1,MPI_INT,sendproc,0,world,&status);
+                     &nlocal_down,1,MPI_INT,sendproc,0,world,MPI_STATUS_IGNORE);
 
         // send downstream
 
@@ -942,7 +937,7 @@ void PairSNAP::load_balance()
           nlocal++;
           int get_tag = -1;
 
-          MPI_Recv(&get_tag,1,MPI_INT,recvproc,0,world,&status);
+          MPI_Recv(&get_tag,1,MPI_INT,recvproc,0,world,MPI_STATUS_IGNORE);
 
           if (get_tag >= 0) {
             if (ghostinum >= ghostilist_max) {
@@ -1020,17 +1015,16 @@ void PairSNAP::build_per_atom_arrays()
   clock_gettime(CLOCK_REALTIME,&starttime);
 #endif
 
-  int i_list[list->inum+ghostinum];
   int count = 0;
   int neighmax = 0;
   for (int ii = 0; ii < list->inum; ii++)
     if ((do_load_balance <= 0) || ilistmask[ii]) {
       neighmax=MAX(neighmax,list->numneigh[list->ilist[ii]]);
-      i_list[count++]=list->ilist[ii];
+      ++count;
     }
   for (int ii = 0; ii < ghostinum; ii++) {
     neighmax=MAX(neighmax,ghostnumneigh[ghostilist[ii]]);
-    i_list[count++]=ghostilist[ii];
+    ++count;
   }
 
   if (i_max < count || i_neighmax < neighmax) {
